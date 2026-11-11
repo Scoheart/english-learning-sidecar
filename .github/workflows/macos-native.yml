@@ -1,0 +1,37 @@
+name: Native macOS
+on:
+  pull_request:
+    paths: ['apps/macos/**', '.github/workflows/macos-native.yml', 'src/lib/**']
+  push:
+    branches: [main]
+    paths: ['apps/macos/**', '.github/workflows/macos-native.yml', 'src/lib/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Native tests and compile
+        run: |
+          swift --version
+          swift test --package-path apps/macos
+          swift build --package-path apps/macos
+          python3 apps/macos/scripts/test-hook.py "$(swift build --package-path apps/macos --show-bin-path)/SidecarHook"
+      - name: Existing engine regression tests
+        run: npm test
+      - name: Build self-contained app
+        run: bash apps/macos/scripts/build-app.sh --bundle-engine
+      - name: Packaged engine smoke tests
+        run: python3 apps/macos/scripts/test-engine.py "apps/macos/dist/English Sidecar.app/Contents/Resources/engine"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EnglishSidecar-macOS-${{ runner.arch }}
+          path: apps/macos/dist/EnglishSidecar-*.zip
+          if-no-files-found: error
+          retention-days: 14
