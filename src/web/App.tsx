@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Check,
@@ -17,6 +17,9 @@ import {
   Layers,
   GitBranch,
   FileText,
+  Edit2,
+  CheckCircle2,
+  Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -119,11 +122,25 @@ interface KnowledgeItem {
   last_seen: string;
 }
 
+interface SafeModel {
+  id: string;
+  name: string;
+  kind: 'text' | 'speech';
+  baseUrl: string;
+  model: string;
+  voice?: string;
+  temperature?: number | null;
+  apiKeySet: boolean;
+  apiKeyMasked: string;
+}
+
 interface SidecarStatus {
   mode: 'live' | 'demo';
   model: string;
   paused: boolean;
   demoEnabled: boolean;
+  activeTextModel?: SafeModel | null;
+  activeSpeechModel?: SafeModel | null;
   stats: {
     total: number;
     complete: number;
@@ -132,6 +149,17 @@ interface SidecarStatus {
     knowledge: number;
     sources: { source: string; count: number }[];
   };
+}
+
+interface ModelFormData {
+  id?: string;
+  name: string;
+  kind: 'text' | 'speech';
+  baseUrl: string;
+  model: string;
+  voice?: string;
+  temperature?: string;
+  apiKey?: string;
 }
 
 const AGENT_NAMES: Record<string, string> = {
@@ -172,12 +200,24 @@ export default function App() {
   const [status, setStatus] = useState<SidecarStatus | null>(null);
   const [events, setEvents] = useState<SidecarEvent[]>([]);
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
+  const [models, setModels] = useState<SafeModel[]>([]);
+  const [activeTextId, setActiveTextId] = useState<string | null>(null);
+  const [activeSpeechId, setActiveSpeechId] = useState<string | null>(null);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mainMode, setMainMode] = useState<'feed' | 'knowledge'>('feed');
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState(false);
   const [speakingText, setSpeakingText] = useState<string | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [ttsError, setTtsError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'text' | 'speech'>('text');
+  const [editingModel, setEditingModel] = useState<ModelFormData | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
   const [sampleIndex, setSampleIndex] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
@@ -198,15 +238,24 @@ export default function App() {
 
   const refreshData = async () => {
     try {
-      const [sRes, eRes, kRes] = await Promise.all([
+      const [sRes, eRes, kRes, mRes] = await Promise.all([
         fetch('/api/status'),
         fetch('/api/events?limit=120'),
         fetch('/api/knowledge'),
+        fetch('/api/models'),
       ]);
       if (!sRes.ok || !eRes.ok || !kRes.ok) return;
       const sData: SidecarStatus = await sRes.json();
       const eData: { events: SidecarEvent[] } = await eRes.json();
       const kData: { knowledge: KnowledgeItem[] } = await kRes.json();
+
+      if (mRes.ok) {
+        const mData: { activeTextId: string | null; activeSpeechId: string | null; models: SafeModel[] } =
+          await mRes.json();
+        setModels(mData.models || []);
+        setActiveTextId(mData.activeTextId);
+        setActiveSpeechId(mData.activeSpeechId);
+      }
 
       setStatus(sData);
       setEvents(eData.events || []);
@@ -227,6 +276,14 @@ export default function App() {
     stream.addEventListener('open', refreshData);
     return () => stream.close();
   }, []);
+
+  const activeTextModel = useMemo(() => {
+    return models.find((m) => m.id === activeTextId && m.kind === 'text') || status?.activeTextModel || null;
+  }, [models, activeTextId, status]);
+
+  const activeSpeechModel = useMemo(() => {
+    return models.find((m) => m.id === activeSpeechId && m.kind === 'speech') || status?.activeSpeechModel || null;
+  }, [models, activeSpeechId, status]);
 
   const filteredEvents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -252,14 +309,21 @@ export default function App() {
     [events, filteredEvents, selectedId],
   );
 
-  const speak = (text?: string) => {
-    if (!text || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const clean = text.replace(/\[Demo preview\]/g, '').trim();
-    if (speakingText === clean) {
-      setSpeakingText(null);
-      return;
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
     }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsPlayingAudio(false);
+    setSpeakingText(null);
+  };
+
+  const fallbackBrowserSpeech = (clean: string) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(clean);
     utterance.lang = 'en-US';
     utterance.rate = 0.95;
@@ -267,6 +331,62 @@ export default function App() {
     utterance.onend = () => setSpeakingText(null);
     utterance.onerror = () => setSpeakingText(null);
     window.speechSynthesis.speak(utterance);
+  };
+
+  const speak = async (text?: string) => {
+    if (!text) return;
+    const clean = text.replace(/\[Demo preview\]/g, '').trim();
+    if (!clean) return;
+
+    if (isPlayingAudio || speakingText === clean) {
+      stopAudio();
+      return;
+    }
+    stopAudio();
+
+    // 如果配置了 speech 模型，优先请求后端 TTS
+    if (activeSpeechModel) {
+      try {
+        setIsPlayingAudio(true);
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ input: clean }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${res.status}`);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          setIsPlayingAudio(false);
+          audioRef.current = null;
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          setIsPlayingAudio(false);
+          audioRef.current = null;
+          setTtsError('Audio playback failed');
+          setTimeout(() => setTtsError(null), 3500);
+          fallbackBrowserSpeech(clean);
+        };
+        await audio.play();
+        return;
+      } catch (err: any) {
+        setIsPlayingAudio(false);
+        setTtsError('TTS unavailable; using browser voice');
+        setTimeout(() => setTtsError(null), 3500);
+        fallbackBrowserSpeech(clean);
+        return;
+      }
+    }
+
+    // 未配置 speech 模型时，直接使用浏览器语音
+    fallbackBrowserSpeech(clean);
   };
 
   const copyTranslation = async (text?: string) => {
@@ -314,6 +434,97 @@ export default function App() {
     await refreshData();
   };
 
+  const handleSetActiveModel = async (id: string) => {
+    await fetch(`/api/models/${id}/active`, { method: 'POST' });
+    await refreshData();
+  };
+
+  const handleDeleteModel = async (id: string) => {
+    await fetch(`/api/models/${id}`, { method: 'DELETE' });
+    await refreshData();
+  };
+
+  const handleOpenNewModel = (kind: 'text' | 'speech') => {
+    setFormError(null);
+    setEditingModel({
+      name: '',
+      kind,
+      baseUrl: 'https://api.openai.com/v1',
+      model: kind === 'text' ? 'gpt-4o-mini' : 'tts-1',
+      voice: kind === 'speech' ? 'marin' : undefined,
+      temperature: kind === 'text' ? '' : undefined,
+      apiKey: '',
+    });
+  };
+
+  const handleOpenEditModel = (m: SafeModel) => {
+    setFormError(null);
+    setEditingModel({
+      id: m.id,
+      name: m.name,
+      kind: m.kind,
+      baseUrl: m.baseUrl,
+      model: m.model,
+      voice: m.voice || 'marin',
+      temperature: m.temperature !== null && m.temperature !== undefined ? String(m.temperature) : '',
+      apiKey: '',
+    });
+  };
+
+  const handleSaveModel = async () => {
+    if (!editingModel) return;
+    setFormError(null);
+    try {
+      const payload: any = {
+        name: editingModel.name.trim(),
+        kind: editingModel.kind,
+        baseUrl: editingModel.baseUrl.trim(),
+        model: editingModel.model.trim(),
+      };
+      if (editingModel.kind === 'speech') {
+        payload.voice = (editingModel.voice || '').trim() || 'marin';
+      } else {
+        payload.temperature =
+          editingModel.temperature && editingModel.temperature.trim() !== ''
+            ? Number(editingModel.temperature)
+            : null;
+      }
+
+      if (editingModel.id) {
+        // 更新现有模型
+        if (editingModel.apiKey !== undefined && editingModel.apiKey.trim() !== '') {
+          payload.apiKey = editingModel.apiKey.trim();
+        }
+        const res = await fetch(`/api/models/${editingModel.id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to update model');
+        }
+      } else {
+        // 创建新模型
+        payload.apiKey = editingModel.apiKey?.trim() || '';
+        const res = await fetch('/api/models', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to create model');
+        }
+      }
+
+      setEditingModel(null);
+      await refreshData();
+    } catch (err: any) {
+      setFormError(err.message || 'Operation failed');
+    }
+  };
+
   const analysis = selectedEvent?.analysis;
   const cleanHeroEnglish = analysis?.translation?.replace(/\s*\[Demo preview\]\s*/g, '') || '';
 
@@ -347,7 +558,11 @@ export default function App() {
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground"
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => {
+                setEditingModel(null);
+                setFormError(null);
+                setSettingsOpen(true);
+              }}
               title="Settings"
             >
               <Settings2 className="h-3.5 w-3.5" />
@@ -479,19 +694,38 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     {analysis && (
                       <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5 text-xs"
-                          onClick={() => speak(cleanHeroEnglish)}
-                        >
-                          {speakingText === cleanHeroEnglish ? (
-                            <VolumeX className="h-3.5 w-3.5" />
-                          ) : (
-                            <Volume2 className="h-3.5 w-3.5" />
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs"
+                            onClick={() => speak(cleanHeroEnglish)}
+                          >
+                            {isPlayingAudio || speakingText === cleanHeroEnglish ? (
+                              <VolumeX className="h-3.5 w-3.5 text-destructive" />
+                            ) : (
+                              <Volume2 className="h-3.5 w-3.5" />
+                            )}
+                            Listen
+                          </Button>
+                          <Badge
+                            variant="outline"
+                            className="h-8 px-2 text-[11px] font-normal text-muted-foreground border-dashed"
+                            title={
+                              activeSpeechModel
+                                ? `TTS Model: ${activeSpeechModel.name} (${activeSpeechModel.model}) · Voice: ${activeSpeechModel.voice || 'marin'}`
+                                : 'Web Speech API (Browser default)'
+                            }
+                          >
+                            {activeSpeechModel ? activeSpeechModel.name : 'Browser voice'}
+                          </Badge>
+                          {ttsError && (
+                            <span className="text-[11px] font-medium text-destructive animate-in fade-in duration-200">
+                              {ttsError}
+                            </span>
                           )}
-                          Listen
-                        </Button>
+                        </div>
+
                         <Button
                           size="sm"
                           className="h-8 gap-1.5 text-xs"
@@ -938,22 +1172,23 @@ export default function App() {
         )}
       </main>
 
-      {/* Settings Dialog (shadcn/ui Dialog) */}
+      {/* Settings Dialog: Enhanced with Multi-Model Configuration */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[88vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-base">Preferences</DialogTitle>
+            <DialogTitle className="text-base font-semibold">Preferences</DialogTitle>
             <DialogDescription className="text-xs">
-              Configure local prompt capture and analysis model settings.
+              Configure background collection, custom text LLMs, and TTS voice providers.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-5 py-2">
+            {/* Capture Toggle */}
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-0.5">
                 <div className="text-sm font-medium">Capture New Prompts</div>
                 <div className="text-xs text-muted-foreground">
-                  Listen to local agent hooks in the background.
+                  Listen to local coding agent hooks in the background.
                 </div>
               </div>
               <Switch
@@ -965,16 +1200,343 @@ export default function App() {
 
             <Separator />
 
+            {/* Model Engine Display */}
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <div className="text-sm font-medium">Model Engine</div>
                 <div className="text-xs text-muted-foreground">
-                  {status?.model || 'Demo preview'}
+                  {activeTextModel ? `${activeTextModel.name} (${activeTextModel.model})` : status?.model || 'gpt-4o-mini'}
                 </div>
               </div>
               <Badge variant={status?.mode === 'live' ? 'default' : 'secondary'}>
                 {status?.mode === 'live' ? 'LIVE' : 'DEMO'}
               </Badge>
+            </div>
+
+            <Separator />
+
+            {/* Multi-Model Configurations */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium">Model Configurations</div>
+              </div>
+
+              <Tabs
+                value={settingsTab}
+                onValueChange={(v) => {
+                  setSettingsTab(v as 'text' | 'speech');
+                  setEditingModel(null);
+                  setFormError(null);
+                }}
+                className="w-full"
+              >
+                <div className="flex items-center justify-between pb-2">
+                  <TabsList className="grid h-8 grid-cols-2 w-48">
+                    <TabsTrigger value="text" className="text-xs">
+                      Text Models ({models.filter((m) => m.kind === 'text').length})
+                    </TabsTrigger>
+                    <TabsTrigger value="speech" className="text-xs">
+                      TTS Models ({models.filter((m) => m.kind === 'speech').length})
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {!editingModel && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1 px-2.5 text-xs"
+                      onClick={() => handleOpenNewModel(settingsTab)}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add {settingsTab === 'text' ? 'Text' : 'TTS'} Model
+                    </Button>
+                  )}
+                </div>
+
+                {/* Inline Model Edit/Add Form */}
+                {editingModel && (
+                  <div className="my-3 rounded-lg border bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold">
+                        {editingModel.id ? 'Edit Model' : `New ${editingModel.kind.toUpperCase()} Model`}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5 text-xs text-muted-foreground"
+                        onClick={() => setEditingModel(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+
+                    {formError && (
+                      <div className="rounded-md bg-destructive/15 p-2 text-xs text-destructive">
+                        {formError}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-medium text-muted-foreground">Display Name</label>
+                        <Input
+                          value={editingModel.name}
+                          onChange={(e) => setEditingModel({ ...editingModel, name: e.target.value })}
+                          placeholder={editingModel.kind === 'text' ? 'e.g. OpenAI GPT-4o' : 'e.g. OpenAI Voice'}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="font-medium text-muted-foreground">Model Identifier</label>
+                        <Input
+                          value={editingModel.model}
+                          onChange={(e) => setEditingModel({ ...editingModel, model: e.target.value })}
+                          placeholder={editingModel.kind === 'text' ? 'e.g. gpt-6-luna' : 'e.g. tts-1'}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="font-medium text-muted-foreground">Base URL</label>
+                        <Input
+                          value={editingModel.baseUrl}
+                          onChange={(e) => setEditingModel({ ...editingModel, baseUrl: e.target.value })}
+                          placeholder="https://api.openai.com/v1"
+                          className="h-8 text-xs"
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          Remote endpoints must use HTTPS. Local loopback allows HTTP.
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="font-medium text-muted-foreground">API Key</label>
+                        <Input
+                          type="password"
+                          value={editingModel.apiKey || ''}
+                          onChange={(e) => setEditingModel({ ...editingModel, apiKey: e.target.value })}
+                          placeholder={
+                            editingModel.id
+                              ? 'Leave blank to preserve existing key (enter space/clear to delete)'
+                              : 'sk-...'
+                          }
+                          className="h-8 text-xs font-mono"
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          Stored strictly in ~/.english-sidecar (0600 mode). Never exposed to browser.
+                        </span>
+                      </div>
+
+                      {editingModel.kind === 'speech' ? (
+                        <div className="space-y-1">
+                          <label className="font-medium text-muted-foreground">Voice Name</label>
+                          <Input
+                            value={editingModel.voice || ''}
+                            onChange={(e) => setEditingModel({ ...editingModel, voice: e.target.value })}
+                            placeholder="marin (or alloy, echo, nova...)"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <label className="font-medium text-muted-foreground">Temperature (Optional)</label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            value={editingModel.temperature ?? ''}
+                            onChange={(e) => setEditingModel({ ...editingModel, temperature: e.target.value })}
+                            placeholder="Leave blank for model default (null)"
+                            className="h-8 text-xs"
+                          />
+                          <span className="text-[10px] text-muted-foreground">
+                            Note: gpt-6-luna rejects custom temperature; leave empty.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => setEditingModel(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button size="sm" className="h-7 text-xs" onClick={handleSaveModel}>
+                        Save Model
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Text Models Tab Content */}
+                <TabsContent value="text" className="mt-2 space-y-2">
+                  {models.filter((m) => m.kind === 'text').length === 0 ? (
+                    <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
+                      No text models configured. Falling back to default environment variables.
+                    </div>
+                  ) : (
+                    models
+                      .filter((m) => m.kind === 'text')
+                      .map((m) => {
+                        const isActive = m.id === activeTextId;
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-colors ${
+                              isActive ? 'border-primary/60 bg-accent/40 shadow-2xs' : 'border-border/70 hover:bg-muted/40'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => handleSetActiveModel(m.id)}
+                                className="mt-0.5"
+                                title={isActive ? 'Currently active' : 'Click to activate'}
+                              >
+                                {isActive ? (
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                ) : (
+                                  <Radio className="h-4 w-4 text-muted-foreground/60 hover:text-foreground" />
+                                )}
+                              </button>
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-foreground">{m.name}</span>
+                                  <span className="font-mono text-[11px] text-muted-foreground">
+                                    {m.model}
+                                  </span>
+                                  {isActive && (
+                                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                                      Active
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                                  <span className="truncate max-w-[200px]">{m.baseUrl}</span>
+                                  <span>·</span>
+                                  <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : 'No API key'}</span>
+                                  {m.temperature !== null && m.temperature !== undefined && (
+                                    <>
+                                      <span>·</span>
+                                      <span>temp: {m.temperature}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground"
+                                onClick={() => handleOpenEditModel(m)}
+                                title="Edit"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleDeleteModel(m.id)}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </TabsContent>
+
+                {/* Speech (TTS) Models Tab Content */}
+                <TabsContent value="speech" className="mt-2 space-y-2">
+                  {models.filter((m) => m.kind === 'speech').length === 0 ? (
+                    <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
+                      No TTS models configured. Listen uses local Browser voice by default.
+                    </div>
+                  ) : (
+                    models
+                      .filter((m) => m.kind === 'speech')
+                      .map((m) => {
+                        const isActive = m.id === activeSpeechId;
+                        return (
+                          <div
+                            key={m.id}
+                            className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-colors ${
+                              isActive ? 'border-primary/60 bg-accent/40 shadow-2xs' : 'border-border/70 hover:bg-muted/40'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => handleSetActiveModel(m.id)}
+                                className="mt-0.5"
+                                title={isActive ? 'Currently active' : 'Click to activate'}
+                              >
+                                {isActive ? (
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                ) : (
+                                  <Radio className="h-4 w-4 text-muted-foreground/60 hover:text-foreground" />
+                                )}
+                              </button>
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-foreground">{m.name}</span>
+                                  <span className="font-mono text-[11px] text-muted-foreground">
+                                    {m.model}
+                                  </span>
+                                  <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
+                                    Voice: {m.voice || 'marin'}
+                                  </Badge>
+                                  {isActive && (
+                                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                                      Active
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                                  <span className="truncate max-w-[200px]">{m.baseUrl}</span>
+                                  <span>·</span>
+                                  <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : 'No API key'}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground"
+                                onClick={() => handleOpenEditModel(m)}
+                                title="Edit"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleDeleteModel(m.id)}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
         </DialogContent>

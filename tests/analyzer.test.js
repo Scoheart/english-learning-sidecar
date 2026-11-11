@@ -28,3 +28,28 @@ test('sanitizes optional arrays and missing fields', () => {
   assert.deepEqual(obj.examples,[]);
   assert.throws(() => validateAnalysis({vocabulary:[]}),/Missing translation/);
 });
+
+test('throws friendly 90 seconds timeout error on abort without slowing tests', async () => {
+  const fakeAbortFetch = async () => {
+    const error = new Error('This operation was aborted');
+    error.name = 'AbortError';
+    throw error;
+  };
+  const analyze = createAnalyzer({mode:'live',model:'test-model',apiKey:'fake-key',baseUrl:'https://example.com/v1'}, fakeAbortFetch);
+  await assert.rejects(
+    () => analyze('测试超时请求'),
+    (err) => {
+      assert.equal(err.message, 'The learning model did not respond within 90 seconds');
+      return true;
+    }
+  );
+});
+
+test('preserves HTTP and other unexpected errors without rewriting', async () => {
+  const fakeErrorFetch = async () => ({ ok: false, status: 503 });
+  const analyze = createAnalyzer({mode:'live',model:'test-model',apiKey:'fake-key',baseUrl:'https://example.com/v1'}, fakeErrorFetch);
+  await assert.rejects(
+    () => analyze('测试其他错误'),
+    /Model API returned HTTP 503/
+  );
+});

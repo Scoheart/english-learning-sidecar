@@ -69,7 +69,7 @@ Return ONLY a valid JSON object with EXACTLY these fields:
   "notes": "Chinese note on pragmatic register and engineering communication context",
   "summary": "One short Chinese takeaway summarizing the word-sentence-paragraph progression"
 }
-Limits: at most 4 vocabulary items, 5 sentence constituents, 3 grammar rules, and 2 examples. Do not fabricate intent beyond what the user wrote.`;
+Limits: at most 4 vocabulary items, 5 sentence constituents, 3 grammar rules, and 2 examples. 每个字符串字段只写一到两句。Do not fabricate intent beyond what the user wrote.`;
 
 function parseObject(value) {
   if (typeof value !== 'string') throw new Error('Model did not return text');
@@ -526,20 +526,23 @@ export function createAnalyzer(config, request = fetch) {
   if (config.mode === 'demo') return async (text) => demoAnalysis(text);
   return async (text) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 90000);
     try {
+      const bodyPayload = {
+        model: config.model,
+        stream: false,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: `Study this user-authored text only:\n<user_text>\n${text}\n</user_text>` },
+        ],
+      };
+      if (typeof config.temperature === 'number' && !Number.isNaN(config.temperature)) {
+        bodyPayload.temperature = config.temperature;
+      }
       const res = await request(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
-        body: JSON.stringify({
-          model: config.model,
-          temperature: 0.2,
-          stream: false,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `Study this user-authored text only:\n<user_text>\n${text}\n</user_text>` },
-          ],
-        }),
+        body: JSON.stringify(bodyPayload),
         signal: controller.signal,
       });
       if (!res.ok) throw new Error(`Model API returned HTTP ${res.status}`);
@@ -547,6 +550,11 @@ export function createAnalyzer(config, request = fetch) {
       const content = payload.choices?.[0]?.message?.content;
       const raw = Array.isArray(content) ? content.map(p => p.text || '').join('') : content;
       return validateAnalysis(parseObject(raw));
+    } catch (err) {
+      if (controller.signal.aborted || err?.name === 'AbortError') {
+        throw new Error('The learning model did not respond within 90 seconds');
+      }
+      throw err;
     } finally { clearTimeout(timeout); }
   };
 }
