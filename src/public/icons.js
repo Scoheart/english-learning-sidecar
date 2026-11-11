@@ -9,8 +9,11 @@
     'settings': '<path d="M12 3.3a2 2 0 0 1 2 1.7l.3 1.3a7.5 7.5 0 0 1 1.2.7l1.2-.5a2 2 0 0 1 2.4.9l1.1 1.9a2 2 0 0 1-.5 2.5l-1 .9v1.4l1 .9a2 2 0 0 1 .5 2.5l-1.1 1.9a2 2 0 0 1-2.4.9l-1.2-.5a8 8 0 0 1-1.2.7L14 21a2 2 0 0 1-2 1.7 2 2 0 0 1-2-1.7l-.3-1.3a8 8 0 0 1-1.2-.7l-1.2.5a2 2 0 0 1-2.4-.9l-1.1-1.9a2 2 0 0 1 .5-2.5l1-.9v-1.4l-1-.9a2 2 0 0 1-.5-2.5l1.1-1.9a2 2 0 0 1 2.4-.9l1.2.5a8 8 0 0 1 1.2-.7L10 5a2 2 0 0 1 2-1.7Z"/><circle cx="12" cy="13" r="2.5"/>',
     'shield-check': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>',
     'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+    'chevron-down': '<path d="m6 9 6 6 6-6"/>',
     'arrow-right': '<path d="M5 12h14m-6-6 6 6-6 6"/>',
+    'arrow-down': '<path d="M12 5v14m-7-7 7 7 7-7"/>',
     'arrow-up-right': '<path d="M7 17 17 7M8 7h9v9"/>',
+    'corner-down-right': '<polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>',
     'check': '<path d="m5 12 4 4L19 6"/>',
     'check-circle': '<circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/>',
     'search': '<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>',
@@ -23,14 +26,19 @@
     'sparkles': '<path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3ZM5 17l.6 1.4L7 19l-1.4.6L5 21l-.6-1.4L3 19l1.4-.6L5 17ZM19 16l.6 1.4L21 18l-1.4.6L19 20l-.6-1.4L17 18l1.4-.6L19 16Z"/>',
     'terminal': '<rect x="2" y="3" width="20" height="18" rx="2"/><path d="m6 9 3 3-3 3m6 0h6"/>',
     'clock': '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
-    'chevron-down': '<path d="m6 9 6 6 6-6"/>',
     'external-link': '<path d="M13 5h6v6m0-6-9 9"/><path d="M19 13v6H5V5h6"/>',
     'activity': '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     'pause': '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
     'circle-help': '<circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4m0 4h.01"/>',
     'command': '<path d="M9 7V5a2 2 0 1 0-2 2h10a2 2 0 1 0-2-2v14a2 2 0 1 0 2-2H7a2 2 0 1 0 2 2V7Z"/>',
     'filter': '<path d="M4 7h16M7 12h10m-7 5h4"/>',
-    'menu': '<path d="M4 6h16M4 12h16M4 18h16"/>'
+    'menu': '<path d="M4 6h16M4 12h16M4 18h16"/>',
+    'volume-2': '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+    'volume-x': '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>',
+    'lightbulb': '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+    'zap': '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    'cpu': '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2M9 2v2M15 20v2M9 20v2M2 15h2M2 9h2M20 15h2M20 9h2"/>'
   };
   function svg(name, cls = '') {
     return `<svg class="icon ${cls}" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths['circle-help']}</svg>`;
