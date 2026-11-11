@@ -43,8 +43,11 @@ public final class SidecarAPI: @unchecked Sendable {
         if let body { req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.httpBody = try JSONSerialization.data(withJSONObject: body) }
         return req
     }
-    public func data(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> Data {
-        let (data, response) = try await session.data(for: request(path, method: method, body: body))
+    public func data(_ path: String, method: String = "GET", body: [String: Any]? = nil,
+                     timeout: TimeInterval? = nil) async throws -> Data {
+        var req = try request(path, method: method, body: body)
+        if let timeout { req.timeoutInterval = timeout }
+        let (data, response) = try await session.data(for: req)
         guard let response = response as? HTTPURLResponse else { throw SidecarError.invalidResponse }
         guard (200...299).contains(response.statusCode) else {
             let error = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String

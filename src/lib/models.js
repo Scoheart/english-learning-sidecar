@@ -2,6 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+export function isLoopbackHost(hostname) {
+  return ['127.0.0.1', 'localhost', '[::1]'].includes(hostname);
+}
+
 export function validateBaseUrl(urlStr) {
   if (!urlStr || typeof urlStr !== 'string') {
     throw new Error('baseUrl is required');
@@ -15,15 +19,22 @@ export function validateBaseUrl(urlStr) {
   if (!['https:', 'http:'].includes(parsed.protocol)) {
     throw new Error('baseUrl must use http: or https:');
   }
-  const rawHost = parsed.hostname.replace(/^\[|\]$/g, '');
-  const isLoopback = ['127.0.0.1', 'localhost', '::1'].includes(rawHost);
-  if (parsed.protocol !== 'https:' && !isLoopback) {
+  if (parsed.protocol !== 'https:' && !isLoopbackHost(parsed.hostname)) {
     throw new Error('Remote baseUrl must use HTTPS');
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new Error('baseUrl must not contain credentials, query parameters or a fragment');
   }
   return parsed.origin + parsed.pathname.replace(/\/+$/, '');
+}
+
+export function validateAuthMode(kind, baseUrl, mode = 'bearer') {
+  if (mode === 'bearer') return mode;
+  if (mode !== 'none') throw new Error('Invalid model authentication mode');
+  if (kind !== 'text' || !isLoopbackHost(new URL(baseUrl).hostname)) {
+    throw new Error('免密模式只支持本机回环地址上的文本模型。');
+  }
+  return mode;
 }
 
 export function maskApiKey(key) {
@@ -47,6 +58,7 @@ export function toSafeModel(model) {
     model: model.model,
     voice: isSpeech ? (model.voice || 'marin') : undefined,
     temperature: !isSpeech ? (typeof model.temperature === 'number' ? model.temperature : null) : undefined,
+    authMode: isSpeech ? undefined : model.authMode || 'bearer',
     apiKeySet: Boolean(model.apiKey && model.apiKey.trim()),
     apiKeyMasked: maskApiKey(model.apiKey),
   };
@@ -56,12 +68,16 @@ export function toSafeModel(model) {
 export function resolveTextConfig(activeModel, fallback) {
   const selected = activeModel || fallback;
   const apiKey = selected.apiKey?.trim() || '';
-  let mode = apiKey ? 'live' : 'unconfigured';
+  let mode = 'unconfigured';
   let baseUrl;
-  try { baseUrl = validateBaseUrl(selected.baseUrl); }
-  catch { mode = 'unconfigured'; }
+  let authMode = 'bearer';
+  try {
+    baseUrl = validateBaseUrl(selected.baseUrl);
+    authMode = validateAuthMode('text', baseUrl, selected.authMode);
+    if (selected.model?.trim() && (apiKey || authMode === 'none')) mode = 'live';
+  } catch { /* Invalid saved configuration must not make a model request. */ }
   return {
-    baseUrl, model: selected.model, apiKey,
+    baseUrl, model: selected.model, apiKey: authMode === 'none' ? '' : apiKey, authMode,
     temperature: activeModel ? activeModel.temperature : null,
     mode,
   };
@@ -152,18 +168,20 @@ export class ModelStore {
 
     const id = crypto.randomUUID();
     const isSpeech = input.kind === 'speech';
+    const authMode = validateAuthMode(input.kind, baseUrl, input.authMode);
     const newModel = {
       id,
       name: String(input.name).trim(),
       kind: input.kind,
       baseUrl,
       model: String(input.model).trim(),
-      apiKey: input.apiKey ? String(input.apiKey).trim() : '',
+      apiKey: authMode === 'bearer' && input.apiKey ? String(input.apiKey).trim() : '',
     };
 
     if (isSpeech) {
       newModel.voice = input.voice && String(input.voice).trim() ? String(input.voice).trim() : 'marin';
     } else {
+      newModel.authMode = authMode;
       newModel.temperature = typeof input.temperature === 'number' && !Number.isNaN(input.temperature)
         ? input.temperature
         : null;
@@ -218,6 +236,9 @@ export class ModelStore {
     }
 
     current.baseUrl = validateBaseUrl(current.baseUrl);
+    const authMode = validateAuthMode(current.kind, current.baseUrl, patch.authMode === undefined ? current.authMode : patch.authMode);
+    if (current.kind === 'text') current.authMode = authMode;
+    if (authMode === 'none') current.apiKey = '';
     this.save(data);
     return toSafeModel(current);
   }
@@ -302,6 +323,19 @@ export class ModelStore {
     });
     state.models = draft.models.map(model => state.models.find(saved => saved.id === mappedIds.get(model.id)));
     return state;
+  }
+
+  prepareTextTest(input) {
+    if (!input || input.kind !== 'text') throw new Error('只能测试文本模型。');
+    const id = input.id ?? 'draft-test';
+    const prepared = this.prepareDraft({
+      models: [{ ...input, id }],
+      activeTextId: id,
+      activeSpeechId: null,
+    });
+    const config = resolveTextConfig(prepared.models[0]);
+    if (config.mode !== 'live') throw new Error('请填写此端点的 API Key，或为本机文本模型选择免密模式。');
+    return config;
   }
 
   selectActive({ activeTextId, activeSpeechId }) {

@@ -31,17 +31,21 @@ npm run dev:web   # http://127.0.0.1:5173; proxies /api to 4317
 
 Settings supports adding, editing, selecting and deleting separate text and speech model configurations. The dialog has a single **确定 / 取消 (Confirm / Cancel)** footer: capture switches, project rules, model edits, selection and removal are local drafts until Confirm submits them together. Cancel, Escape or closing the dialog discards unsaved changes. Completing a model form only stages that edit; Confirm also includes a valid model form still being edited. Validation failures keep the draft open without partial application. Saved changes apply to the next analysis, not a model request already in progress.
 
+Choose a text-model preset in the Web or macOS model editor, then enter a model ID from your provider. The available presets are OpenAI, OpenRouter, Gemini, DeepSeek, Ollama, LM Studio and LiteLLM Proxy. You can also enter any compatible Base URL manually. **测试模型 (Test Model)** runs the real analyzer against one fixed sentence and shows its translation before you save. It sends only the sample to the selected endpoint. The test does not save settings or add learning history.
+
+For local inference, start [Ollama](https://docs.ollama.com/api/openai-compatibility), run `ollama pull qwen3:4b-instruct`, select the Ollama preset and enter `qwen3:4b-instruct`. Use the local no-auth option for an unauthenticated loopback endpoint. For a cloud endpoint, use a provider API key. [LiteLLM Proxy](https://docs.litellm.ai/docs/proxy/quick_start) can expose additional providers, including Anthropic, through the same protocol. Enter its configured model alias. See [the model provider design and verification plan](docs/MODEL_PROVIDERS.md).
+
 Only real model analysis is supported. Auto/Demo modes, fixed teaching cards and the sample endpoint have been removed. Legacy `LEARNING_MODE` / `SIDECAR_DEMO` environment values are ignored and saved mode preferences are migrated to Live; they cannot re-enable generated fixtures. Existing history is preserved.
 
-When the selected text model has no API key or a valid endpoint, the UI shows **请先接入模型** and a **接入模型** button that opens text-model settings. Captured events stay queued, without any model call or fabricated lesson. After you configure and activate a model with a key, pending work resumes automatically unless collection is paused. Presence of a key does not guarantee valid credentials: actual upstream failures are reported as failed analyses, never silently replaced by samples.
+When the selected text model is missing required credentials, an endpoint or a model ID, the UI shows **请先接入模型** and a **接入模型** button that opens text-model settings. Captured events stay queued, without any model call or fabricated lesson. After you configure and activate a model, pending work resumes automatically unless collection is paused. Presence of a key does not guarantee valid credentials: actual upstream failures are reported as failed analyses, never silently replaced by samples.
 
 On first startup, the environment's `LEARNING_BASE_URL`, `LEARNING_MODEL` and `LEARNING_API_KEY` seed the initial text configuration. Once a configuration exists, edit it in Settings; changing environment variables does not overwrite saved models. With no saved text model, the complete environment configuration is used as a fallback. Endpoint, model and key are never mixed field-by-field between providers.
 
-Editing a model with a blank key input **preserves** its existing key. Use the explicit **Clear saved API key** checkbox to remove it. Changing the Base URL requires re-entering a key or explicitly clearing it; the backend also clears old credentials when an endpoint changes. URLs cannot contain credentials, query parameters or fragments.
+Editing a model with a blank key input **preserves** its existing key. Use the explicit **Clear saved API key** checkbox to remove it. Changing the Base URL clears the old credential at the backend. Enter a new key or explicitly choose local no-auth for a loopback text model. URLs cannot contain credentials, query parameters or fragments.
 
 Keys stay on the backend. API responses expose only a masked value. Model configurations are stored in `models.json` under the data directory with mode 0600 where supported. This is permission-protected local plaintext, **not encrypted storage**. Keep backups private.
 
-Text models use OpenAI-compatible `/chat/completions`; speech models use `/audio/speech`. Text requests time out after 90 seconds and TTS after 20 seconds. Provider compatibility and voice availability must be validated with your chosen service.
+Text models use OpenAI-compatible `/chat/completions`; speech models use `/audio/speech`. Text requests time out after 90 seconds for remote endpoints and 180 seconds for loopback endpoints. TTS times out after 20 seconds. Provider compatibility and voice availability must be validated with your chosen service.
 
 ## Learning experience
 
@@ -129,7 +133,8 @@ Tests use temporary local data and mocked model/TTS responses. They do not requi
 | `GET /api/stream` | SSE notifications |
 | `POST /api/events` | Authenticated Agent capture (`X-Sidecar-Token`) |
 | `GET/POST /api/settings` | Capture policy and pause |
-| `GET/POST /api/models` | List masked configurations / create |
+| `GET/POST /api/models` | List masked configurations and text presets / create |
+| `POST /api/models/test` | Run a fixed sample against an unsaved text configuration |
 | `PATCH/DELETE /api/models/:id` | Edit / remove configuration |
 | `POST /api/models/:id/active` | Select a model |
 | `POST /api/tts` | On-demand speech proxy |

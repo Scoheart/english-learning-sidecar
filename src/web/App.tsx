@@ -1,4 +1,4 @@
-import { createPlaybackSession, requireOk, selectMatchingEvent, stageSettingsModel, removeSettingsModel, type SettingsModelDraft } from './lib/reliability.js';
+import { createPlaybackSession, requireOk, selectMatchingEvent, stageSettingsModel, removeSettingsModel, type ModelFormData, type SettingsModel, type SettingsModelDraft, type TextModelPreset } from './lib/reliability.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
@@ -30,6 +30,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ModelConnectionTest } from '@/components/model-connection-test';
 import { TaskStatusBadge, type TaskStatus } from '@/components/task-status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -122,25 +123,13 @@ interface KnowledgeItem {
   last_seen: string;
 }
 
-interface SafeModel {
-  id: string;
-  name: string;
-  kind: 'text' | 'speech';
-  baseUrl: string;
-  model: string;
-  voice?: string;
-  temperature?: number | null;
-  apiKeySet: boolean;
-  apiKeyMasked: string;
-}
-
 interface SidecarStatus {
   mode: 'live' | 'unconfigured';
   capturePolicy: { mode: 'all' | 'allowlist'; allowedProjects: string[]; excludedProjects: string[] };
   model: string;
   paused: boolean;
-  activeTextModel?: SafeModel | null;
-  activeSpeechModel?: SafeModel | null;
+  activeTextModel?: SettingsModel | null;
+  activeSpeechModel?: SettingsModel | null;
   stats: {
     total: number;
     complete: number;
@@ -149,18 +138,6 @@ interface SidecarStatus {
     knowledge: number;
     sources: { source: string; count: number }[];
   };
-}
-
-interface ModelFormData {
-  id?: string;
-  name: string;
-  kind: 'text' | 'speech';
-  baseUrl: string;
-  model: string;
-  voice?: string;
-  temperature?: string;
-  apiKey?: string;
-  clearApiKey?: boolean;
 }
 
 const AGENT_NAMES: Record<string, string> = {
@@ -194,7 +171,7 @@ export default function App() {
   const [status, setStatus] = useState<SidecarStatus | null>(null);
   const [events, setEvents] = useState<SidecarEvent[]>([]);
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
-  const [models, setModels] = useState<SafeModel[]>([]);
+  const [models, setModels] = useState<SettingsModel[]>([]);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
   const [activeSpeechId, setActiveSpeechId] = useState<string | null>(null);
 
@@ -221,6 +198,7 @@ export default function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'text' | 'speech'>('text');
+  const [textPresets, setTextPresets] = useState<TextModelPreset[]>([]);
   const [editingModel, setEditingModel] = useState<ModelFormData | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -255,9 +233,10 @@ export default function App() {
       const kData: { knowledge: KnowledgeItem[] } = await kRes.json();
 
       if (mRes.ok) {
-        const mData: { activeTextId: string | null; activeSpeechId: string | null; models: SafeModel[] } =
+        const mData: { activeTextId: string | null; activeSpeechId: string | null; models: SettingsModel[]; textPresets?: TextModelPreset[] } =
           await mRes.json();
         setModels(mData.models || []);
+        setTextPresets(mData.textPresets || []);
         setActiveTextId(mData.activeTextId);
         setActiveSpeechId(mData.activeSpeechId);
       }
@@ -428,7 +407,7 @@ export default function App() {
     const nextModels = editingModel ? stageSettingsModel(modelDraft, editingModel) : modelDraft;
     setModelDraft(nextModels);
     if (editingModel) setEditingModel(null);
-    // The only request made by this dialog: save all changes together.
+    // Commit all settings changes together.
     await request('/api/settings', 'POST', {
       paused: pausedDraft,
       capturePolicy: { ...captureDraft, allowedProjects: captureDraft.allowedProjects.map(p => p.trim()).filter(Boolean), excludedProjects: captureDraft.excludedProjects.map(p => p.trim()).filter(Boolean) },
@@ -465,12 +444,13 @@ export default function App() {
     });
   };
 
-  const handleOpenEditModel = (m: SafeModel) => {
+  const handleOpenEditModel = (m: SettingsModel) => {
     setFormError(null);
     setEditingModel({
       id: m.id,
       name: m.name,
       kind: m.kind,
+      authMode: m.authMode,
       baseUrl: m.baseUrl,
       model: m.model,
       voice: m.voice || 'marin',
@@ -500,6 +480,13 @@ export default function App() {
     setModelDraft({ models: models.map(m => ({ ...m })), activeTextId, activeSpeechId });
     setMutationError(null);
     setSettingsOpen(true);
+  };
+
+  const openModelSetup = () => {
+    if (busy) return;
+    openSettings();
+    if (activeTextModel) handleOpenEditModel(activeTextModel);
+    else handleOpenNewModel('text');
   };
 
   const needsModelSetup = status?.mode === 'unconfigured';
@@ -663,9 +650,9 @@ export default function App() {
           <div role="status" className="mx-10 mt-4 flex items-center justify-between gap-4 rounded-md border bg-muted/50 p-3 text-xs">
             <div className="space-y-1">
               <p className="font-medium">先接入文本模型，开始生成学习内容</p>
-              <p className="text-muted-foreground">当前没有可用的文本模型密钥，不会生成内容。已采集的提示会保持排队，接入并启用带有 API Key 的文本模型后自动处理。</p>
+              <p className="text-muted-foreground">配置并启用文本模型后，已采集的提示会自动处理。</p>
             </div>
-            <Button size="sm" className="shrink-0 text-xs" disabled={busy} onClick={openSettings}>接入模型</Button>
+            <Button size="sm" className="shrink-0 text-xs" disabled={busy} onClick={openModelSetup}>接入模型</Button>
           </div>
         )}
         {mutationError && <div role="alert" className="mx-10 mt-4 rounded-md bg-destructive/15 p-3 text-xs text-destructive">{mutationError}</div>}
@@ -789,7 +776,7 @@ export default function App() {
                   ) : (
                     <div className="text-sm text-muted-foreground">
                       {needsModelSetup && selectedEvent.status === 'pending'
-                        ? '等待接入模型：此提示已加入队列。请先接入并启用带有 API Key 的文本模型，之后会自动处理；缺少密钥时不会生成内容。'
+                        ? '此提示已加入队列。配置并启用文本模型后会自动处理。'
                         : selectedEvent.error || (selectedEvent.status === 'cancelled' ? '分析已取消，可点击 Retry 重试。' : selectedEvent.status === 'skipped' ? '此提示未分析。' : selectedEvent.status === 'failed' ? '分析失败，请重试。' : selectedEvent.status === 'pending' ? '提示已排队，将在后台自动处理。' : 'Analyzing prompt in the background...')}
                     </div>
                   )}
@@ -1224,12 +1211,12 @@ export default function App() {
                                     <h2 className="text-base font-semibold">{needsModelSetup ? '先接入文本模型' : search.trim() ? '没有匹配的提示' : '还没有提示'}</h2>
                                     <p className="max-w-sm text-xs text-muted-foreground">
                                       {needsModelSetup
-                                        ? '接入并启用带有 API Key 的文本模型后，即可生成学习内容。已采集的提示会保留在队列中，接入后自动处理。'
+                                        ? '配置并启用文本模型后即可生成学习内容。'
                                         : search.trim() ? '请尝试其他关键词，或清空搜索查看历史提示。' : '从编码助手提交提示，系统会在后台自动生成学习内容。'}
                                     </p>
                                   </div>
                                   {needsModelSetup && (
-                                    <Button size="sm" className="mt-2 gap-1.5 text-xs" disabled={busy} onClick={openSettings}>
+                                    <Button size="sm" className="mt-2 gap-1.5 text-xs" disabled={busy} onClick={openModelSetup}>
                                       接入模型
                                     </Button>
                                   )}
@@ -1407,7 +1394,7 @@ export default function App() {
                                       <div className="flex items-center justify-between">
                                         <div className="text-sm font-medium">Model Configurations</div>
                                       </div>
-                                      <p className="text-xs text-muted-foreground">学习内容仅由已启用的真实文本模型生成。未配置 API Key 时不会生成内容，提示会保持排队；补充密钥并启用模型后自动处理。</p>
+                                      <p className="text-xs text-muted-foreground">配置并启用文本模型后，队列中的提示会自动处理。</p>
 
                                       <Tabs
                                         value={settingsTab}
@@ -1465,6 +1452,27 @@ export default function App() {
                                               </div>
                                             )}
 
+                                            {editingModel.kind === 'text' && textPresets.length > 0 && (
+                                              <div className="space-y-1 text-xs">
+                                                <label htmlFor="model-preset" className="font-medium text-muted-foreground">服务商预设</label>
+                                                <select id="model-preset" disabled={busy} className="block h-8 w-full rounded-md border border-input bg-background px-2"
+                                                  value="" onChange={(event) => {
+                                                    const preset = textPresets.find(item => item.id === event.target.value);
+                                                    if (!preset) return;
+                                                    const sameEndpoint = editingModel.baseUrl.trim().replace(/\/+$/, '') === preset.baseUrl;
+                                                    setEditingModel({
+                                                      ...editingModel, baseUrl: preset.baseUrl, authMode: preset.authMode,
+                                                      name: sameEndpoint && editingModel.name ? editingModel.name : preset.name,
+                                                      model: sameEndpoint ? editingModel.model : '',
+                                                      apiKey: '', clearApiKey: false, temperature: '',
+                                                    });
+                                                  }}>
+                                                  <option value="">选择预设，或手动填写</option>
+                                                  {textPresets.map(preset => <option value={preset.id} key={preset.id}>{preset.name}</option>)}
+                                                </select>
+                                              </div>
+                                            )}
+
                                             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs">
                                               <div className="space-y-1">
                                                 <label htmlFor="model-name" className="font-medium text-muted-foreground">Display Name</label>
@@ -1490,7 +1498,11 @@ export default function App() {
                                                 <label htmlFor="model-base-url" className="font-medium text-muted-foreground">Base URL</label>
                                                 <Input disabled={busy} id="model-base-url" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
                                                   value={editingModel.baseUrl}
-                                                  onChange={(e) => setEditingModel({ ...editingModel, baseUrl: e.target.value })}
+                                                  onChange={(e) => {
+                                                    const baseUrl = e.target.value;
+                                                    const changed = baseUrl.trim().replace(/\/+$/, '') !== editingModel.baseUrl.trim().replace(/\/+$/, '');
+                                                    setEditingModel({ ...editingModel, baseUrl, apiKey: changed ? '' : editingModel.apiKey });
+                                                  }}
                                                   placeholder="https://api.openai.com/v1"
                                                   className="h-8 text-xs"
                                                 />
@@ -1499,7 +1511,16 @@ export default function App() {
                                                 </span>
                                               </div>
 
-                                              <div className="space-y-1 sm:col-span-2">
+                                              {editingModel.kind === 'text' && (
+                                                <div className="sm:col-span-2">
+                                                  <StyledCheckbox checked={editingModel.authMode === 'none'} disabled={busy}
+                                                    onChange={checked => setEditingModel({ ...editingModel, authMode: checked ? 'none' : 'bearer', apiKey: '', clearApiKey: false })}>
+                                                    本机免密连接（仅回环地址）
+                                                  </StyledCheckbox>
+                                                </div>
+                                              )}
+
+                                              {editingModel.authMode !== 'none' && <div className="space-y-1 sm:col-span-2">
                                                 <label htmlFor="model-api-key" className="font-medium text-muted-foreground">API Key</label>
                                                 <Input id="model-api-key" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
                                                   type="password"
@@ -1528,7 +1549,7 @@ export default function App() {
                                                 <span className="text-[10px] text-muted-foreground">
                                                   密钥提交后保存在本地受限权限文件中；读取配置只返回掩码，不返回完整密钥。
                                                 </span>
-                                              </div>
+                                              </div>}
 
                                               {editingModel.kind === 'speech' ? (
                                                 <div className="space-y-1">
@@ -1554,11 +1575,13 @@ export default function App() {
                                                     className="h-8 text-xs"
                                                   />
                                                   <span className="text-[10px] text-muted-foreground">
-                                                    Note: gpt-6-luna rejects custom temperature; leave empty.
+                                                    不确定模型是否支持自定义温度时，请留空。
                                                   </span>
                                                 </div>
                                               )}
                                             </div>
+
+                                            {editingModel.kind === 'text' && <ModelConnectionTest form={editingModel} draft={modelDraft} disabled={busy} />}
 
                                             <div className="flex justify-end gap-2 pt-1">
                                               <Button
@@ -1580,7 +1603,7 @@ export default function App() {
                                         <TabsContent value="text" className="mt-2 space-y-2">
                                           {modelDraft.models.filter((m) => m.kind === 'text').length === 0 ? (
                                             <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
-                                              尚未配置文本模型。点击 Add Text Model 添加配置并填写 API Key，启用后会自动处理排队中的提示。
+                                              点击 Add Text Model 添加文本模型。
                                             </div>
                                           ) : (
                                             modelDraft.models
@@ -1623,7 +1646,7 @@ export default function App() {
                                                         <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
                                                           <span className="truncate max-w-[200px]">{m.baseUrl}</span>
                                                           <span>·</span>
-                                                          <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : '未配置 API Key，不会生成内容'}</span>
+                                                          <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : m.authMode === 'none' ? '本机免密' : '未配置 API Key，不会生成内容'}</span>
                                                           {m.temperature !== null && m.temperature !== undefined && (
                                                             <>
                                                               <span>·</span>

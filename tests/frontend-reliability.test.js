@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPlaybackSession, modelPayload, requireOk, selectMatchingEvent, stageSettingsModel, removeSettingsModel } from '../src/web/lib/reliability.js';
+import { createPlaybackSession, modelPayload, modelTestPayload, requireOk, selectMatchingEvent, stageSettingsModel, removeSettingsModel } from '../src/web/lib/reliability.js';
 
 const form = { id: 'model-1', name: 'Text', kind: 'text', baseUrl: 'https://example.com/v1', model: 'test', apiKey: '', temperature: '' };
 
@@ -104,4 +104,14 @@ test('mutation response failures retain actionable server error or HTTP fallback
   await assert.rejects(requireOk(new Response(JSON.stringify({ error: '请重新输入密钥' }), { status: 400 })), /请重新输入密钥/);
   await assert.rejects(requireOk(new Response('invalid JSON', { status: 503 })), /HTTP 503/);
   assert.equal((await requireOk(new Response('{}'))).ok, true);
+});
+
+test('testing a reopened draft uses its staged key and clears it when switching to a local preset', () => {
+  const saved = { models: [{ ...form, apiKeySet: true, apiKeyMasked: 'masked' }], activeTextId: form.id, activeSpeechId: null };
+  const staged = stageSettingsModel(saved, { ...form, apiKey: 'staged-key' });
+  assert.equal(modelTestPayload(staged, form).apiKey, 'staged-key');
+  const local = { ...form, authMode: 'none', baseUrl: 'http://127.0.0.1:11434/v1' };
+  assert.equal(modelTestPayload(staged, local).apiKey, '');
+  assert.equal(stageSettingsModel(staged, local).models[0].authMode, 'none');
+  assert.equal(staged.models[0].apiKey, 'staged-key');
 });

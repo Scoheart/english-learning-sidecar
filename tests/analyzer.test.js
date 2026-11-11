@@ -254,3 +254,18 @@ test('preserves HTTP and other unexpected errors without rewriting', async () =>
     /Model API returned HTTP 503/
   );
 });
+
+test('local inference has more time than the remote model deadline', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let upstreamSignal;
+  const analyze = createAnalyzer({ baseUrl: 'http://127.0.0.1:11434/v1', authMode: 'none', model: 'local' }, async (_url, { signal }) => {
+    upstreamSignal = signal;
+    return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  });
+  const result = analyze('我想早点回家休息。').catch(error => error);
+  t.mock.timers.tick(90_000);
+  assert.equal(upstreamSignal.aborted, false);
+  t.mock.timers.tick(90_000);
+  assert.equal(upstreamSignal.aborted, true);
+  assert.match((await result).message, /180 seconds/);
+});
