@@ -11,10 +11,10 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/web/*"]
-    }
+    },
+    "types": ["vite/client"]
   },
   "include": ["src/web"]
 }

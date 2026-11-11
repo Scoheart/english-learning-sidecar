@@ -4,48 +4,50 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* Warm alabaster / paper-tinted studio palette (inspired by Craft / Readwise / Linear) */
+    --background: 40 23% 98%;
+    --foreground: 224 30% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 224 30% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --popover-foreground: 224 30% 12%;
+    --primary: 228 64% 40%;
+    --primary-foreground: 0 0% 99%;
+    --secondary: 220 20% 94.5%;
+    --secondary-foreground: 224 28% 18%;
+    --muted: 40 16% 94.2%;
+    --muted-foreground: 220 13% 42%;
+    --accent: 226 52% 94.8%;
+    --accent-foreground: 228 64% 30%;
+    --destructive: 0 76% 54%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.625rem;
+    --border: 220 16% 89%;
+    --input: 220 16% 87%;
+    --ring: 228 64% 40%;
+    --radius: 0.75rem;
+    --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 5.5%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 5.5%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 13.5%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 13.5%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 13.5%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 224 25% 8.2%;
+    --foreground: 215 22% 94%;
+    --card: 224 23% 11%;
+    --card-foreground: 215 22% 94%;
+    --popover: 224 24% 11.5%;
+    --popover-foreground: 215 22% 94%;
+    --primary: 222 82% 66%;
+    --primary-foreground: 224 28% 10%;
+    --secondary: 223 19% 16.5%;
+    --secondary-foreground: 215 20% 92%;
+    --muted: 223 19% 15.2%;
+    --muted-foreground: 218 14% 66%;
+    --accent: 224 28% 18.5%;
+    --accent-foreground: 215 28% 96%;
+    --destructive: 0 68% 52%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 14.5%;
-    --input: 240 3.7% 14.5%;
-    --ring: 240 4.9% 83.9%;
+    --border: 223 17% 18.5%;
+    --input: 223 17% 19%;
+    --ring: 222 82% 66%;
   }
 }
 
@@ -53,9 +55,130 @@
   * {
     @apply border-border;
   }
+  html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
   body {
-    @apply bg-background text-foreground;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
+    @apply bg-background text-foreground selection:bg-primary/15 selection:text-primary;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Inter", "Segoe UI", Roboto, sans-serif;
+    line-height: 1.65;
+    transition: background-color 280ms var(--ease-spring), color 280ms var(--ease-spring);
+  }
+}
+
+/* Dictionary headword & literary English display serif/humanist stack */
+.font-editorial {
+  font-family: "Charter", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "SF Pro Display", -apple-system, serif;
+}
+
+.font-phonetic {
+  font-family: "SF Mono", "JetBrains Mono", "Menlo", "Lucida Sans Unicode", monospace;
+}
+
+/* Silky staged entrance & surface transitions */
+@keyframes silkyFadeSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.994);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes silkyScaleIn {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes subtlePulseGlow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.18);
+  }
+}
+
+.animate-stage-in {
+  animation: silkyFadeSlideUp 320ms var(--ease-spring) both;
+}
+
+.animate-tab-in {
+  animation: silkyFadeSlideUp 260ms var(--ease-spring) both;
+}
+
+.animate-dropdown-in {
+  animation: silkyScaleIn 180ms var(--ease-spring) both;
+}
+
+.animate-voice-pulse {
+  animation: subtlePulseGlow 1.6s ease-in-out infinite;
+}
+
+/* Interactive Card & List Item Silky Micro-interactions */
+.surface-card {
+  transition:
+    transform 260ms var(--ease-spring),
+    box-shadow 260ms var(--ease-spring),
+    border-color 220ms ease,
+    background-color 220ms ease;
+}
+
+.surface-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px -12px hsl(var(--foreground) / 0.08),
+    0 4px 12px -4px hsl(var(--foreground) / 0.04);
+}
+
+.sidebar-prompt-item {
+  position: relative;
+  transition:
+    background-color 220ms var(--ease-spring),
+    color 220ms var(--ease-spring),
+    transform 220ms var(--ease-spring),
+    box-shadow 220ms var(--ease-spring);
+}
+
+.sidebar-prompt-item:hover {
+  transform: translateX(2px);
+}
+
+.sidebar-prompt-item:active {
+  transform: translateX(1px) scale(0.992);
+}
+
+/* Polished form textarea & custom controls */
+.ui-textarea {
+  @apply w-full rounded-lg border border-input bg-background/90 px-3 py-2 text-xs font-mono leading-relaxed text-foreground shadow-2xs transition-all duration-200;
+  @apply placeholder:text-muted-foreground/60 hover:border-primary/40 focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-stage-in,
+  .animate-tab-in,
+  .animate-dropdown-in,
+  .animate-voice-pulse {
+    animation: none !important;
+  }
+  .surface-card,
+  .sidebar-prompt-item {
+    transition: none !important;
+    transform: none !important;
   }
 }
 

@@ -105,11 +105,16 @@ X-Sidecar-Token: <contents of ~/.english-sidecar/ingest-token>
   "eventType": "user.prompt.submitted",
   "sessionId": "opaque-session-id",
   "turnId": "opaque-turn-id",
+  "projectPath": "/absolute/path/to/authorized/project",
   "content": "帮我解释这段代码的目的"
 }
 ```
 
-The Sidecar responds `202` immediately, performs redaction and processing asynchronously, and deduplicates retransmissions with the same source, session, and turn. `assistant.reply` is accepted but **not analyzed** until a future explicit opt-in is implemented.
+The Sidecar applies project policy and text extraction/redaction **before local persistence**, then responds `202` without waiting for model analysis. Rejected projects return `{"ignored":true,"reason":"project-policy"}` and are not saved. Session/turn IDs and the normalized project path are hashed before storage; raw identifiers and paths are not sent to the teaching model. Retransmissions are deduplicated using source, hashed identity, content and the existing time-window rules.
+
+The Hook runner reports a native absolute `cwd`/project directory when available, falling back to its process working directory. Pi uses `ctx.cwd` with the same fallback. Missing project paths are rejected in allowlist mode. Matching is lexical and includes subdirectories with path boundaries; exclusions win. Symlink aliases are not resolved. Update third-party adapters to send `projectPath` before enabling allowlist mode. `assistant.reply` is accepted but **not analyzed** until a future explicit opt-in is implemented.
+
+Only Live model analysis is supported. Missing model credentials keep accepted events queued; configuring a text model resumes them. The old sample endpoint has been removed.
 
 ## References
 

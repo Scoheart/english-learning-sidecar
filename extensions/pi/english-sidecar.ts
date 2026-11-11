@@ -18,6 +18,7 @@ export default function (pi: any) {
       void fetch(`http://127.0.0.1:${port}/api/events`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-sidecar-token': token },
         body: JSON.stringify({ source: 'pi', sessionId, content: event.text,
+          projectPath: typeof ctx.cwd === 'string' && ctx.cwd ? ctx.cwd : process.cwd(),
           eventType: 'user.prompt.submitted' }),
         signal: AbortSignal.timeout(250),
       }).catch(() => {});

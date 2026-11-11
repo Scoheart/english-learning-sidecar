@@ -14,11 +14,22 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',
     port: 5173,
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:4317',
         changeOrigin: true,
+        configure(proxy) {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            // Only the trusted dev page gets a same-origin rewrite; hostile Origins
+            // still reach the backend unchanged and remain rejected.
+            if (['http://127.0.0.1:5173', 'http://localhost:5173'].includes(req.headers.origin || '')) {
+              proxyReq.setHeader('origin', 'http://127.0.0.1:4317');
+            }
+          });
+        },
       },
     },
   },

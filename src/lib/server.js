@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { ensurePrivateData } from './config.js';
 import { Storage } from './storage.js';
 import { createAnalyzer } from './analyzer.js';
-import { normalizeIncomingEvent } from './privacy.js';
-import { ModelStore, toSafeModel } from './models.js';
+import { normalizeIncomingEvent, normalizeCapturePolicy, isProjectAllowed, extractLearningText, redactSensitive } from './privacy.js';
+import { ModelStore, toSafeModel, resolveTextConfig, validateBaseUrl } from './models.js';
 
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_BODY_BYTES = 128 * 1024;
@@ -68,14 +68,35 @@ function sameOrigin(req, port) {
   }
 }
 
-export function createSidecar(config, { analyzer, storage, modelStore, requestFetch = fetch } = {}) {
+export function createSidecar(config, { analyzer, storage, modelStore, requestFetch = fetch, publicDir = PUBLIC } = {}) {
   const token = ensurePrivateData(config);
   const db = storage || new Storage(config.dataDir);
   const models = modelStore || new ModelStore(config.dataDir, config);
   const clients = new Set();
   let running = false;
   let closed = false;
-  let idleTimer = null;
+  let activeJob = null;
+  const ttsControllers = new Set();
+  // Migrate the obsolete preference; old Auto/Demo values must never enable fake lessons.
+  db.setSetting('learningMode', 'live');
+  const capturePolicy = () => normalizeCapturePolicy(db.getSetting('capturePolicy', {}));
+  const textConfig = () => resolveTextConfig(models.getActiveTextModel(), config);
+
+  function cancelActive(id) {
+    if (activeJob && (!id || activeJob.id === id)) activeJob.controller.abort(new DOMException('Analysis cancelled', 'AbortError'));
+  }
+
+  // Race the work against cancellation even if a third-party fetch ignores AbortSignal.
+  async function cancellable(work, signal) {
+    signal.throwIfAborted();
+    let onAbort;
+    const cancelled = new Promise((_, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    try { return await Promise.race([work(), cancelled]); }
+    finally { signal.removeEventListener('abort', onAbort); }
+  }
 
   function broadcast(kind = 'update') {
     const data = `event: ${kind}\ndata: ${JSON.stringify({ time: new Date().toISOString() })}\n\n`;
@@ -89,39 +110,37 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
   }
 
   function schedule() {
-    if (closed || running || db.getPaused()) return;
+    if (closed || running || db.getPaused() || (!analyzer && textConfig().mode !== 'live')) return;
     queueMicrotask(processQueue);
   }
 
-  async function runAnalysis(text) {
-    if (analyzer) return analyzer(text);
-    const activeText = models.getActiveTextModel();
-    const currentConfig = {
-      baseUrl: activeText?.baseUrl || config.baseUrl,
-      model: activeText?.model || config.model,
-      apiKey: activeText?.apiKey || config.apiKey,
-      temperature: activeText ? activeText.temperature : null,
-      mode: config.mode,
-    };
-    const dynamicAnalyzer = createAnalyzer(currentConfig, requestFetch);
-    return dynamicAnalyzer(text);
+  async function runAnalysis(text, signal) {
+    // Also sanitize old queued records created before the privacy migration.
+    const safeText = extractLearningText(redactSensitive(text));
+    if (!safeText) throw new Error('No natural-language study material remains after privacy filtering');
+    if (analyzer) return analyzer(safeText, { signal });
+    return createAnalyzer(textConfig(), requestFetch)(safeText, { signal });
   }
 
   async function processQueue() {
-    if (closed || running || db.getPaused()) return;
+    if (closed || running || db.getPaused() || (!analyzer && textConfig().mode !== 'live')) return;
     running = true;
     try {
       let pending;
-      while (!closed && !db.getPaused() && (pending = db.nextPending())) {
+      while (!closed && !db.getPaused() && (analyzer || textConfig().mode === 'live') && (pending = db.nextPending())) {
         db.setProcessing(pending.id);
         broadcast();
+        const job = { id: pending.id, controller: new AbortController() };
+        activeJob = job;
         try {
-          const result = await runAnalysis(pending.content);
+          const result = await cancellable(() => runAnalysis(pending.content, job.controller.signal), job.controller.signal);
           if (closed) break;
-          db.finish(pending.id, result);
+          if (!job.controller.signal.aborted) db.finish(pending.id, result);
         } catch (err) {
           if (closed) break;
-          db.fail(pending.id, err.message || 'Unknown model error');
+          if (!job.controller.signal.aborted) db.fail(pending.id, redactSensitive(err.message || 'Unknown model error'));
+        } finally {
+          if (activeJob === job) activeJob = null;
         }
         broadcast();
       }
@@ -153,12 +172,13 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
       if (req.method === 'GET' && pathname === '/api/status') {
         const activeText = models.getActiveTextModel();
         const activeSpeech = models.getActiveSpeechModel();
-        const currentModelName = activeText?.model || config.model;
+        const current = textConfig();
         return json(res, 200, {
-          mode: config.mode,
-          model: config.mode === 'live' ? currentModelName : 'Demo preview',
+          mode: current.mode,
+          configurationMessage: current.mode === 'live' ? null : '请先接入模型：在设置中配置有效的文本模型地址和 API Key。',
+          capturePolicy: capturePolicy(),
+          model: current.model,
           paused: db.getPaused(),
-          demoEnabled: config.demoEnabled,
           stats: db.stats(),
           host: config.host,
           port: server.address()?.port || config.port,
@@ -188,7 +208,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
       if (req.method === 'POST' && pathname === '/api/models') {
         const body = await readJson(req);
         const created = models.addModel(body);
-        broadcast();
+        broadcast(); schedule();
         return json(res, 201, { model: created, ...models.list() });
       }
 
@@ -196,46 +216,64 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
       if ((req.method === 'PATCH' || req.method === 'PUT') && modelIdMatch) {
         const body = await readJson(req);
         const updated = models.updateModel(modelIdMatch[1], body);
-        broadcast();
+        broadcast(); schedule();
         return json(res, 200, { model: updated, ...models.list() });
       }
 
       if (req.method === 'DELETE' && modelIdMatch) {
         const removed = models.deleteModel(modelIdMatch[1]);
         if (!removed) return json(res, 404, { error: 'Model not found' });
-        broadcast();
+        broadcast(); schedule();
         return json(res, 200, { removed: true, ...models.list() });
       }
 
       const activeMatch = pathname.match(/^\/api\/models\/([0-9a-f-]+)\/active$/i);
       if (req.method === 'POST' && activeMatch) {
         const state = models.setActive(activeMatch[1]);
-        broadcast();
+        broadcast(); schedule();
         return json(res, 200, state);
       }
 
       if (req.method === 'GET' && pathname === '/api/settings') {
         return json(res, 200, {
-          paused: db.getPaused(),
+          paused: db.getPaused(), capturePolicy: capturePolicy(),
           ...models.list(),
         });
       }
 
       if (req.method === 'POST' && pathname === '/api/settings') {
         const body = await readJson(req);
-        if (typeof body.paused === 'boolean') {
-          db.setPaused(body.paused);
-          if (!body.paused) schedule();
-        }
-        if (body.activeTextId) {
-          models.setActive(body.activeTextId, 'text');
-        }
-        if (body.activeSpeechId) {
-          models.setActive(body.activeSpeechId, 'speech');
+        if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'Expected settings object' });
+        if (body.learningMode !== undefined && body.learningMode !== 'live') return json(res, 400, { error: '仅支持 Live，请先接入真实模型。' });
+        const nextPolicy = body.capturePolicy !== undefined ? normalizeCapturePolicy(body.capturePolicy, { strict: true }) : null;
+        if (body.paused !== undefined && typeof body.paused !== 'boolean') return json(res, 400, { error: 'paused must be boolean' });
+        const selectionChanged = Object.hasOwn(body, 'activeTextId') || Object.hasOwn(body, 'activeSpeechId');
+        const hasDraft = Object.hasOwn(body, 'modelDraft');
+        if (hasDraft && selectionChanged) return json(res, 400, { error: 'modelDraft cannot be combined with top-level active model IDs' });
+        const previousModels = hasDraft || selectionChanged ? models.load() : null;
+        // Complete all draft validation before opening the SQL transaction or saving any models.
+        const nextModels = hasDraft ? models.prepareDraft(body.modelDraft, previousModels) : null;
+        db.db.exec('BEGIN');
+        let modelSaved = false;
+        try {
+          if (hasDraft || selectionChanged) {
+            modelSaved = true; // Also restore the snapshot if a file write itself fails partway.
+            if (hasDraft) models.save(nextModels);
+            else models.selectActive(body); // Validates both IDs before saving either.
+          }
+          if (body.learningMode !== undefined) db.setSetting('learningMode', body.learningMode);
+          if (nextPolicy) db.setSetting('capturePolicy', nextPolicy);
+          if (typeof body.paused === 'boolean') db.setPaused(body.paused);
+          db.db.exec('COMMIT');
+        } catch (error) {
+          try { db.db.exec('ROLLBACK'); }
+          finally { if (modelSaved) models.save(previousModels); }
+          throw error;
         }
         broadcast();
+        schedule();
         return json(res, 200, {
-          paused: db.getPaused(),
+          paused: db.getPaused(), capturePolicy: capturePolicy(),
           ...models.list(),
         });
       }
@@ -245,23 +283,26 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
         if (!speechModel) {
           return json(res, 400, { error: 'No TTS model configured' });
         }
-        if (config.mode === 'demo' && !speechModel.apiKey) {
-          return json(res, 400, { error: 'TTS disabled in demo mode without API key' });
-        }
         if (!speechModel.apiKey) {
           return json(res, 400, { error: 'TTS model has no API key' });
         }
+        const speechBaseUrl = validateBaseUrl(speechModel.baseUrl);
         const body = await readJson(req);
-        const input = String(body?.input || '').trim();
+        const input = extractLearningText(redactSensitive(String(body?.input || ''))).trim();
         if (!input) {
           return json(res, 400, { error: 'TTS input is required' });
         }
 
         const controller = new AbortController();
+        ttsControllers.add(controller);
+        const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+        res.on('close', disconnect);
         const timeout = setTimeout(() => controller.abort(), 20000);
+        let ttsRes;
         try {
-          const ttsRes = await requestFetch(`${speechModel.baseUrl}/audio/speech`, {
+          ttsRes = await requestFetch(`${speechBaseUrl}/audio/speech`, {
             method: 'POST',
+            redirect: 'error',
             headers: {
               'content-type': 'application/json',
               authorization: `Bearer ${speechModel.apiKey}`,
@@ -274,21 +315,24 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
             signal: controller.signal,
           });
           if (!ttsRes.ok) {
-            const errText = await ttsRes.text().catch(() => '');
-            return json(res, 502, { error: `TTS upstream error (${ttsRes.status}): ${errText.slice(0, 200)}` });
+            // Never reflect upstream bodies: they can contain credentials or submitted text.
+            return json(res, 502, { error: `TTS upstream error (${ttsRes.status})` });
           }
           const contentType = ttsRes.headers.get('content-type') || 'audio/mpeg';
-          res.writeHead(200, {
-            'content-type': contentType,
-            'cache-control': 'no-store',
-          });
+          if (!contentType.startsWith('audio/') && contentType !== 'application/octet-stream') throw new Error('Invalid audio response');
           const arrayBuffer = await ttsRes.arrayBuffer();
+          if (controller.signal.aborted || res.destroyed) return;
+          res.writeHead(200, { 'content-type': contentType, 'cache-control': 'no-store' });
           res.end(Buffer.from(arrayBuffer));
           return;
         } catch (err) {
-          return json(res, 502, { error: `TTS request failed: ${err.message}` });
+          if (!res.destroyed) return json(res, 502, { error: controller.signal.aborted ? 'TTS request cancelled or timed out' : 'TTS request failed' });
         } finally {
           clearTimeout(timeout);
+          controller.abort();
+          if (ttsRes?.body && !ttsRes.bodyUsed) void ttsRes.body.cancel().catch(() => {});
+          res.off('close', disconnect);
+          ttsControllers.delete(controller);
         }
       }
 
@@ -315,7 +359,9 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
       if (req.method === 'POST' && pathname === '/api/events') {
         if (!sameToken(req.headers['x-sidecar-token'], token)) return json(res, 401, { error: 'Unauthorized' });
         if (db.getPaused()) return json(res, 202, { ignored: true, reason: 'paused' });
-        const event = normalizeIncomingEvent(await readJson(req));
+        const body = await readJson(req);
+        if (!isProjectAllowed(body?.projectPath, capturePolicy())) return json(res, 202, { ignored: true, reason: 'project-policy' });
+        const event = normalizeIncomingEvent(body);
         const result = db.addEvent(event);
         if (!result.deduplicated) {
           broadcast();
@@ -324,26 +370,18 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
         return json(res, 202, result);
       }
 
-      if (req.method === 'POST' && pathname === '/api/demo') {
-        if (!config.demoEnabled) return json(res, 404, { error: 'Demo fixture disabled' });
-        if (db.getPaused()) return json(res, 409, { error: 'Collection paused' });
-        const body = await readJson(req);
-        const event = normalizeIncomingEvent({
-          source: 'manual',
-          sessionId: 'ui-demo',
-          turnId: crypto.randomUUID(),
-          content: body.prompt,
-        });
-        const result = db.addEvent(event);
-        broadcast();
-        schedule();
-        return json(res, 202, result);
+      const eventCancel = pathname.match(/^\/api\/events\/([0-9a-f-]+)\/cancel$/);
+      if (req.method === 'POST' && eventCancel) {
+        const updated = db.cancel(eventCancel[1]);
+        if (!updated) return json(res, 409, { error: 'Only queued or processing records may be cancelled' });
+        cancelActive(eventCancel[1]);
+        broadcast(); schedule();
+        return json(res, 200, { cancelled: true });
       }
-
       const eventRetry = pathname.match(/^\/api\/events\/([0-9a-f-]+)\/retry$/);
       if (req.method === 'POST' && eventRetry) {
         const updated = db.retry(eventRetry[1]);
-        if (!updated) return json(res, 409, { error: 'Only failed records may be retried' });
+        if (!updated) return json(res, 409, { error: 'Only failed or cancelled records may be retried' });
         broadcast();
         schedule();
         return json(res, 202, { ok: true });
@@ -351,15 +389,27 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
 
       const eventRemove = pathname.match(/^\/api\/events\/([0-9a-f-]+)$/);
       if (req.method === 'DELETE' && eventRemove) {
-        const removed = db.delete(eventRemove[1]);
+        const knowledge = url.searchParams.get('knowledge') || 'keep';
+        if (!['keep', 'purge'].includes(knowledge)) return json(res, 400, { error: 'knowledge must be keep or purge' });
+        const removed = db.delete(eventRemove[1], { purgeKnowledge: knowledge === 'purge' });
+        if (removed) cancelActive(eventRemove[1]);
         broadcast();
         return json(res, removed ? 200 : 404, { removed });
       }
 
-      if (req.method === 'GET' && Object.hasOwn(MIME, pathname)) {
-        const localFile = path.join(PUBLIC, pathname === '/' ? 'index.html' : pathname.slice(1));
+      if (req.method === 'GET' && (Object.hasOwn(MIME, pathname) || pathname.startsWith('/assets/'))) {
+        const decoded = decodeURIComponent(pathname);
+        if (decoded.includes('\\') || decoded.includes('\0') || decoded.split('/').includes('..')) return json(res, 404, { error: 'Not found' });
+        const root = fs.realpathSync(publicDir);
+        const candidate = path.resolve(root, decoded === '/' ? 'index.html' : `.${decoded}`);
+        if (!candidate.startsWith(root + path.sep) || !fs.existsSync(candidate)) return json(res, 404, { error: 'Not found' });
+        const localFile = fs.realpathSync(candidate);
+        if (!localFile.startsWith(root + path.sep) || !fs.statSync(localFile).isFile()) return json(res, 404, { error: 'Not found' });
+        const types = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json' };
+        const type = MIME[pathname] || types[path.extname(localFile)];
+        if (!type) return json(res, 404, { error: 'Not found' });
         const body = fs.readFileSync(localFile);
-        res.writeHead(200, { 'content-type': MIME[pathname], 'cache-control': 'no-store' });
+        res.writeHead(200, { 'content-type': type, 'cache-control': 'no-store' });
         res.end(body);
         return;
       }
@@ -386,7 +436,9 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
     },
     close() {
       closed = true;
-      clearTimeout(idleTimer);
+      cancelActive();
+      for (const controller of ttsControllers) controller.abort();
+      ttsControllers.clear();
       for (const client of clients) client.end();
       clients.clear();
       return new Promise((resolve) =>

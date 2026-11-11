@@ -20,6 +20,9 @@ export function validateBaseUrl(urlStr) {
   if (parsed.protocol !== 'https:' && !isLoopback) {
     throw new Error('Remote baseUrl must use HTTPS');
   }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error('baseUrl must not contain credentials, query parameters or a fragment');
+  }
   return parsed.origin + parsed.pathname.replace(/\/+$/, '');
 }
 
@@ -34,16 +37,33 @@ export function maskApiKey(key) {
 export function toSafeModel(model) {
   if (!model || typeof model !== 'object') return null;
   const isSpeech = model.kind === 'speech';
+  let safeUrl;
+  try { safeUrl = validateBaseUrl(model.baseUrl); } catch { safeUrl = '[Invalid endpoint — edit configuration]'; }
   return {
     id: model.id,
     name: model.name,
     kind: model.kind,
-    baseUrl: model.baseUrl,
+    baseUrl: safeUrl,
     model: model.model,
     voice: isSpeech ? (model.voice || 'marin') : undefined,
     temperature: !isSpeech ? (typeof model.temperature === 'number' ? model.temperature : null) : undefined,
     apiKeySet: Boolean(model.apiKey && model.apiKey.trim()),
     apiKeyMasked: maskApiKey(model.apiKey),
+  };
+}
+
+// Select the entire configuration, never individual fallback fields across providers.
+export function resolveTextConfig(activeModel, fallback) {
+  const selected = activeModel || fallback;
+  const apiKey = selected.apiKey?.trim() || '';
+  let mode = apiKey ? 'live' : 'unconfigured';
+  let baseUrl;
+  try { baseUrl = validateBaseUrl(selected.baseUrl); }
+  catch { mode = 'unconfigured'; }
+  return {
+    baseUrl, model: selected.model, apiKey,
+    temperature: activeModel ? activeModel.temperature : null,
+    mode,
   };
 }
 
@@ -66,7 +86,7 @@ export class ModelStore {
         id: defaultId,
         name: this.fallbackConfig.model || 'Default Text Model',
         kind: 'text',
-        baseUrl: this.fallbackConfig.baseUrl || 'https://api.openai.com/v1',
+        baseUrl: validateBaseUrl(this.fallbackConfig.baseUrl || 'https://api.openai.com/v1'),
         model: this.fallbackConfig.model || 'gpt-4o-mini',
         apiKey: this.fallbackConfig.apiKey || '',
         temperature: null,
@@ -90,7 +110,8 @@ export class ModelStore {
         models: Array.isArray(data.models) ? data.models : [],
       };
     } catch {
-      return { activeTextId: null, activeSpeechId: null, models: [] };
+      // Fail closed: never silently fall back to another provider/key after corruption.
+      throw new Error('Model configuration is unreadable; restore the local configuration before continuing');
     }
   }
 
@@ -174,7 +195,10 @@ export class ModelStore {
       current.name = String(patch.name).trim();
     }
     if (patch.baseUrl !== undefined) {
-      current.baseUrl = validateBaseUrl(patch.baseUrl);
+      const nextUrl = validateBaseUrl(patch.baseUrl);
+      // Credentials belong to this endpoint. Changing it requires explicit re-entry.
+      if (nextUrl !== current.baseUrl) current.apiKey = '';
+      current.baseUrl = nextUrl;
     }
     if (patch.model !== undefined) {
       if (!String(patch.model).trim()) throw new Error('Model identifier cannot be empty');
@@ -193,6 +217,7 @@ export class ModelStore {
         : null;
     }
 
+    current.baseUrl = validateBaseUrl(current.baseUrl);
     this.save(data);
     return toSafeModel(current);
   }
@@ -216,6 +241,80 @@ export class ModelStore {
 
     this.save(data);
     return true;
+  }
+
+  // Validate a complete preferences draft without touching the real models file.
+  // Reuse the regular CRUD rules (including endpoint-bound credentials) in memory.
+  prepareDraft(draft, snapshot = this.load()) {
+    if (!draft || typeof draft !== 'object' || Array.isArray(draft) || !Array.isArray(draft.models)) {
+      throw new Error('modelDraft must contain a models array');
+    }
+    for (const field of ['activeTextId', 'activeSpeechId']) {
+      if (!Object.hasOwn(draft, field) || (draft[field] !== null && typeof draft[field] !== 'string')) {
+        throw new Error(`modelDraft.${field} must be a string or null`);
+      }
+    }
+    const existing = new Map(snapshot.models.map(model => [model.id, model]));
+    const ids = new Set();
+    for (const model of draft.models) {
+      if (!model || typeof model !== 'object' || Array.isArray(model)) throw new Error('Invalid model data');
+      if (typeof model.id !== 'string' || !model.id.trim() || ids.has(model.id)) throw new Error('Model IDs must be nonempty and unique');
+      ids.add(model.id);
+      const current = existing.get(model.id);
+      if (!current && !/^draft-.+/.test(model.id)) throw new Error('New model ID must start with draft-');
+      if (!['text', 'speech'].includes(model.kind)) throw new Error('Model kind must be text or speech');
+      if (current && current.kind !== model.kind) throw new Error('Existing model kind cannot change');
+      for (const field of ['name', 'model']) {
+        if (typeof model[field] !== 'string' || !model[field].trim()) throw new Error(`Model ${field} is required`);
+      }
+      validateBaseUrl(model.baseUrl);
+      if (model.apiKey !== undefined && typeof model.apiKey !== 'string') throw new Error('apiKey must be a string');
+      if (model.voice !== undefined && typeof model.voice !== 'string') throw new Error('voice must be a string');
+      if (model.temperature !== undefined && model.temperature !== null && (typeof model.temperature !== 'number' || !Number.isFinite(model.temperature))) {
+        throw new Error('temperature must be a finite number or null');
+      }
+    }
+
+    let state = structuredClone(snapshot);
+    const memory = Object.create(ModelStore.prototype);
+    memory.load = () => structuredClone(state);
+    memory.save = next => { state = structuredClone(next); };
+    for (const model of snapshot.models) {
+      if (!ids.has(model.id)) memory.deleteModel(model.id);
+    }
+    const mappedIds = new Map();
+    for (const model of draft.models) {
+      if (existing.has(model.id)) {
+        memory.updateModel(model.id, model);
+        mappedIds.set(model.id, model.id);
+      } else {
+        mappedIds.set(model.id, memory.addModel(model).id);
+      }
+    }
+    const resolveId = id => {
+      if (id === null) return null;
+      if (!mappedIds.has(id)) throw new Error('Invalid active model ID');
+      return mappedIds.get(id);
+    };
+    memory.selectActive({
+      activeTextId: resolveId(draft.activeTextId),
+      activeSpeechId: resolveId(draft.activeSpeechId),
+    });
+    state.models = draft.models.map(model => state.models.find(saved => saved.id === mappedIds.get(model.id)));
+    return state;
+  }
+
+  selectActive({ activeTextId, activeSpeechId }) {
+    const data = this.load();
+    for (const [id, kind] of [[activeTextId, 'text'], [activeSpeechId, 'speech']]) {
+      if (id === undefined) continue;
+      if (id === null) continue;
+      if (typeof id !== 'string' || !data.models.some(m => m.id === id && m.kind === kind)) throw new Error(`Invalid active ${kind} model`);
+    }
+    if (activeTextId !== undefined) data.activeTextId = activeTextId;
+    if (activeSpeechId !== undefined) data.activeSpeechId = activeSpeechId;
+    this.save(data);
+    return data;
   }
 
   setActive(id, kind) {
