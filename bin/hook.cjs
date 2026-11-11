@@ -38,6 +38,10 @@ process.stdin.on('end', async () => {
             source, eventType: 'user.prompt.submitted',
             sessionId: String(payload.sessionId || payload.session_id || payload.conversation_id || ''),
             turnId: String(payload.promptId || payload.turnId || payload.turn_id || ''),
+            // Native project fields stay local; the collector checks policy then hashes them.
+            projectPath: [payload.cwd, payload.project_dir, payload.projectDir,
+              payload.project_path, payload.workspace_roots?.[0], payload.workspaceRoots?.[0]]
+              .find(value => typeof value === 'string' && path.isAbsolute(value)) || process.cwd(),
             content: prompt,
           }),
           signal: ac.signal,

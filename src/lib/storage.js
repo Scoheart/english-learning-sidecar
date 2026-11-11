@@ -42,6 +42,15 @@ export class Storage {
         value TEXT NOT NULL
       );
     `);
+    // Additive migrations preserve existing lessons and settings.
+    const eventColumns = this.db.prepare('PRAGMA table_info(events)').all();
+    if (!eventColumns.some(c => c.name === 'project_id')) this.db.exec("ALTER TABLE events ADD COLUMN project_id TEXT NOT NULL DEFAULT ''");
+    const knowledgeColumns = this.db.prepare('PRAGMA table_info(knowledge)').all();
+    if (!knowledgeColumns.some(c => c.name === 'retained_encounters')) {
+      this.db.exec('ALTER TABLE knowledge ADD COLUMN retained_encounters INTEGER NOT NULL DEFAULT 0');
+      this.db.exec(`UPDATE knowledge SET retained_encounters=MAX(0, encounters -
+        (SELECT COUNT(*) FROM event_knowledge WHERE knowledge_id=knowledge.id))`);
+    }
     this.db.prepare("UPDATE events SET status='pending' WHERE status='processing'").run();
   }
 
@@ -51,6 +60,15 @@ export class Storage {
   setPaused(paused) {
     this.db.prepare("INSERT INTO settings(key, value) VALUES ('paused', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
       .run(paused ? '1' : '0');
+  }
+
+  getSetting(key, fallback = null) {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key=?').get(key);
+    return row ? JSON.parse(row.value) : fallback;
+  }
+  setSetting(key, value) {
+    this.db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+      .run(key, JSON.stringify(value));
   }
 
   addEvent(event) {
@@ -65,10 +83,10 @@ export class Storage {
     if (existing) return { id: existing.id, deduplicated: true };
     const id = crypto.randomUUID();
     this.db.prepare(`INSERT INTO events
-      (id, fingerprint, source, event_type, session_id, turn_id, content, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      (id, fingerprint, source, event_type, session_id, turn_id, content, status, created_at, updated_at, project_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, fingerprint, event.source, event.eventType, event.sessionId, event.turnId,
-        event.content, event.eligible ? 'pending' : 'skipped', now, now);
+        event.content, event.eligible ? 'pending' : 'skipped', now, now, event.projectId || '');
     return { id, deduplicated: false };
   }
 
@@ -100,24 +118,45 @@ export class Storage {
   finish(id, analysis) {
     this.db.exec('BEGIN');
     try {
-      this.db.prepare("UPDATE events SET status='complete', analysis=?, error=NULL, updated_at=? WHERE id=?")
+      const updated = this.db.prepare("UPDATE events SET status='complete', analysis=?, error=NULL, updated_at=? WHERE id=? AND status IN ('pending','processing')")
         .run(JSON.stringify(analysis), new Date().toISOString(), id);
-      this.saveKnowledge(id, analysis);
+      if (updated.changes) this.saveKnowledge(id, analysis);
       this.db.exec('COMMIT');
+      return updated.changes > 0;
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   fail(id, error) {
-    this.db.prepare("UPDATE events SET status='failed', error=?, updated_at=? WHERE id=?")
+    this.db.prepare("UPDATE events SET status='failed', error=?, updated_at=? WHERE id=? AND status IN ('pending','processing')")
       .run(String(error).slice(0, 260), new Date().toISOString(), id);
   }
   retry(id) {
-    const result = this.db.prepare("UPDATE events SET status='pending', error=NULL, updated_at=? WHERE id=? AND status='failed'")
+    const result = this.db.prepare("UPDATE events SET status='pending', error=NULL, updated_at=? WHERE id=? AND status IN ('failed','cancelled')")
       .run(new Date().toISOString(), id);
     return result.changes > 0;
   }
-  delete(id) {
-    this.db.prepare('DELETE FROM event_knowledge WHERE event_id=?').run(id);
-    return this.db.prepare('DELETE FROM events WHERE id=?').run(id).changes > 0;
+  cancel(id) {
+    return this.db.prepare("UPDATE events SET status='cancelled', error=NULL, updated_at=? WHERE id=? AND status IN ('pending','processing')")
+      .run(new Date().toISOString(), id).changes > 0;
+  }
+  delete(id, { purgeKnowledge = false } = {}) {
+    this.db.exec('BEGIN');
+    try {
+      const links = this.db.prepare('SELECT knowledge_id FROM event_knowledge WHERE event_id=?').all(id);
+      if (!purgeKnowledge) {
+        for (const link of links) this.db.prepare('UPDATE knowledge SET retained_encounters=retained_encounters+1 WHERE id=?').run(link.knowledge_id);
+      }
+      this.db.prepare('DELETE FROM event_knowledge WHERE event_id=?').run(id);
+      const removed = this.db.prepare('DELETE FROM events WHERE id=?').run(id).changes > 0;
+      for (const link of links) {
+        this.db.prepare(`UPDATE knowledge SET encounters=retained_encounters +
+          (SELECT COUNT(*) FROM event_knowledge WHERE knowledge_id=knowledge.id),
+          last_seen=COALESCE((SELECT MAX(e.updated_at) FROM events e JOIN event_knowledge ek ON ek.event_id=e.id WHERE ek.knowledge_id=knowledge.id), last_seen)
+          WHERE id=?`).run(link.knowledge_id);
+        this.db.prepare('DELETE FROM knowledge WHERE id=? AND encounters=0').run(link.knowledge_id);
+      }
+      this.db.exec('COMMIT');
+      return removed;
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
   saveKnowledge(eventId, analysis) {
     const items = [

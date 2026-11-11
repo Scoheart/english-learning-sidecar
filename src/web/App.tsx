@@ -1,3 +1,4 @@
+import { createPlaybackSession, requireOk, selectMatchingEvent, stageSettingsModel, removeSettingsModel, type SettingsModelDraft } from './lib/reliability.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
@@ -30,8 +31,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { TaskStatusBadge, type TaskStatus } from '@/components/task-status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
@@ -42,6 +45,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+
+import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel } from '@/components/ui/alert-dialog';
 
 interface VocabularyItem {
   term: string;
@@ -79,6 +84,7 @@ interface DiscourseAnalysis {
 }
 
 interface CorrectionItem {
+  kind?: string;
   before: string;
   after: string;
   reason?: string;
@@ -107,7 +113,7 @@ interface SidecarEvent {
   id: string;
   source: string;
   content: string;
-  status: 'complete' | 'pending' | 'processing' | 'failed' | 'skipped';
+  status: TaskStatus;
   analysis?: Analysis | null;
   error?: string | null;
   createdAt: string;
@@ -135,10 +141,10 @@ interface SafeModel {
 }
 
 interface SidecarStatus {
-  mode: 'live' | 'demo';
+  mode: 'live' | 'unconfigured';
+  capturePolicy: { mode: 'all' | 'allowlist'; allowedProjects: string[]; excludedProjects: string[] };
   model: string;
   paused: boolean;
-  demoEnabled: boolean;
   activeTextModel?: SafeModel | null;
   activeSpeechModel?: SafeModel | null;
   stats: {
@@ -160,6 +166,7 @@ interface ModelFormData {
   voice?: string;
   temperature?: string;
   apiKey?: string;
+  clearApiKey?: boolean;
 }
 
 const AGENT_NAMES: Record<string, string> = {
@@ -170,15 +177,8 @@ const AGENT_NAMES: Record<string, string> = {
   pi: 'Pi',
   dsh: 'DSH',
   grok: 'Grok Build',
-  manual: 'Demo',
+  manual: '手动导入',
 };
-
-const SAMPLE_PROMPTS = [
-  '这个 API 需要支持高并发和幂等性处理。',
-  '请帮我排查一下内存泄漏的问题，定位具体的泄露点。',
-  '帮我重构一遍 UI，现在太丑了。',
-  '帮我解释 MCP 的生命周期和 Tool Discovery 机制。',
-];
 
 function formatRelativeTime(value: string): string {
   try {
@@ -209,16 +209,27 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [copied, setCopied] = useState(false);
   const [speakingText, setSpeakingText] = useState<string | null>(null);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [ttsError, setTtsError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackRef = useRef<ReturnType<typeof createPlaybackSession> | null>(null);
+  if (!playbackRef.current) playbackRef.current = createPlaybackSession({
+    cancelSpeech: () => { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); },
+    onStop: () => { setSpeakingText(null); },
+  });
+  const mutationLock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [purgeKnowledge, setPurgeKnowledge] = useState(false);
+  const [modelDeleteTarget, setModelDeleteTarget] = useState<string | null>(null);
+  const [captureDraft, setCaptureDraft] = useState<SidecarStatus['capturePolicy'] | null>(null);
+  const [pausedDraft, setPausedDraft] = useState(false);
+  const [modelDraft, setModelDraft] = useState<SettingsModelDraft>({ models: [], activeTextId: null, activeSpeechId: null });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'text' | 'speech'>('text');
   const [editingModel, setEditingModel] = useState<ModelFormData | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [sampleIndex, setSampleIndex] = useState(0);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
       const saved = localStorage.getItem('sidecar-theme');
@@ -305,88 +316,70 @@ export default function App() {
   }, [knowledge, search]);
 
   const selectedEvent = useMemo(
-    () => events.find((e) => e.id === selectedId) || filteredEvents[0] || null,
-    [events, filteredEvents, selectedId],
+    () => selectMatchingEvent(filteredEvents, selectedId),
+    [filteredEvents, selectedId],
   );
 
-  const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    setIsPlayingAudio(false);
-    setSpeakingText(null);
-  };
+  useEffect(() => {
+    if (mainMode === 'feed' && selectedEvent && selectedEvent.id !== selectedId) setSelectedId(selectedEvent.id);
+  }, [mainMode, selectedEvent?.id, selectedId]);
 
-  const fallbackBrowserSpeech = (clean: string) => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.95;
-    setSpeakingText(clean);
-    utterance.onend = () => setSpeakingText(null);
-    utterance.onerror = () => setSpeakingText(null);
-    window.speechSynthesis.speak(utterance);
-  };
+  const stopAudio = () => playbackRef.current?.stop();
+  useEffect(() => () => playbackRef.current?.stop(), []);
+  useEffect(() => { stopAudio(); setTtsError(null); }, [selectedEvent?.id, mainMode, activeSpeechModel?.id]);
 
   const speak = async (text?: string) => {
-    if (!text) return;
-    const clean = text.replace(/\[Demo preview\]/g, '').trim();
+    const clean = text?.replace(/\[Demo preview\]/g, '').trim();
     if (!clean) return;
-
-    if (isPlayingAudio || speakingText === clean) {
-      stopAudio();
-      return;
-    }
-    stopAudio();
-
-    // 如果配置了 speech 模型，优先请求后端 TTS
-    if (activeSpeechModel) {
-      try {
-        setIsPlayingAudio(true);
-        const res = await fetch('/api/tts', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ input: clean }),
-        });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `HTTP ${res.status}`);
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audioRef.current = audio;
-        audio.onended = () => {
-          URL.revokeObjectURL(url);
-          setIsPlayingAudio(false);
-          audioRef.current = null;
-        };
-        audio.onerror = () => {
-          URL.revokeObjectURL(url);
-          setIsPlayingAudio(false);
-          audioRef.current = null;
-          setTtsError('Audio playback failed');
-          setTimeout(() => setTtsError(null), 3500);
-          fallbackBrowserSpeech(clean);
-        };
-        await audio.play();
-        return;
-      } catch (err: any) {
-        setIsPlayingAudio(false);
-        setTtsError('TTS unavailable; using browser voice');
-        setTimeout(() => setTtsError(null), 3500);
-        fallbackBrowserSpeech(clean);
+    const session = playbackRef.current!;
+    if (session.text === clean) { session.stop(); return; }
+    const ticket = session.begin(clean);
+    setTtsError(null);
+    setSpeakingText(clean);
+    const fallback = (voiceTicket = ticket) => {
+      if (!voiceTicket.current()) return;
+      if (!('speechSynthesis' in window)) {
+        session.stop();
+        setTtsError('浏览器不支持语音播放，请配置 TTS 模型。');
         return;
       }
+      const utterance = new SpeechSynthesisUtterance(clean);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.95;
+      utterance.onend = () => { if (voiceTicket.current()) session.stop(); };
+      utterance.onerror = () => {
+        if (voiceTicket.current()) { session.stop(); setTtsError('浏览器语音播放失败，请重试。'); }
+      };
+      try { window.speechSynthesis.speak(utterance); }
+      catch { if (voiceTicket.current()) { session.stop(); setTtsError('浏览器语音播放失败，请重试。'); } }
+    };
+    if (!activeSpeechModel) { fallback(); return; }
+    try {
+      const res = await requireOk(await fetch('/api/tts', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ input: clean }), signal: ticket.signal,
+      }));
+      const blob = await res.blob();
+      if (!ticket.current()) return;
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      if (!session.attach(ticket, audio, url, (value: string) => URL.revokeObjectURL(value))) return;
+      audio.onended = () => { if (ticket.current()) session.stop(); };
+      audio.onerror = () => {
+        if (!ticket.current()) return;
+        session.stop();
+        setTtsError('音频播放失败，请重试或检查 TTS 配置。');
+      };
+      await audio.play();
+    } catch (err) {
+      if (!ticket.current()) return;
+      // Release any Blob URL/audio before starting a browser-voice fallback.
+      session.stop();
+      setTtsError('TTS 不可用，已尝试浏览器语音。');
+      const fallbackTicket = session.begin(clean);
+      setSpeakingText(clean);
+      fallback(fallbackTicket);
     }
-
-    // 未配置 speech 模型时，直接使用浏览器语音
-    fallbackBrowserSpeech(clean);
   };
 
   const copyTranslation = async (text?: string) => {
@@ -396,52 +389,73 @@ export default function App() {
       await navigator.clipboard.writeText(clean);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    } catch {}
+    } catch { setMutationError('复制失败，请检查浏览器剪贴板权限。'); }
   };
 
-  const handleAddSample = async () => {
-    const prompt = SAMPLE_PROMPTS[sampleIndex % SAMPLE_PROMPTS.length];
-    setSampleIndex((i) => i + 1);
-    const res = await fetch('/api/demo', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.id) setSelectedId(data.id);
-      await refreshData();
-    }
+  const mutate = async (operation: () => Promise<void>, modelForm = false) => {
+    if (mutationLock.current) return;
+    mutationLock.current = true;
+    setBusy(true);
+    setMutationError(null);
+    if (modelForm) setFormError(null);
+    try { await operation(); }
+    catch (err) {
+      const message = err instanceof Error ? err.message : '操作失败，请重试。';
+      if (modelForm) setFormError(message);
+      else setMutationError(message);
+    } finally { mutationLock.current = false; setBusy(false); }
   };
-
-  const handleDelete = async (id: string) => {
-    await fetch(`/api/events/${id}`, { method: 'DELETE' });
+  const request = async (url: string, method: string, body?: unknown) => requireOk(await fetch(url, {
+    method, headers: { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  }));
+  const handleDelete = (id: string) => mutate(async () => {
+    await request(`/api/events/${encodeURIComponent(id)}${purgeKnowledge ? '?knowledge=purge' : ''}`, 'DELETE');
+    setDeleteTarget(null);
     setSelectedId(null);
     await refreshData();
-  };
-
-  const handleRetry = async (id: string) => {
-    await fetch(`/api/events/${id}/retry`, { method: 'POST' });
+  });
+  const handleEventAction = (id: string, action: 'retry' | 'cancel') => mutate(async () => {
+    await request(`/api/events/${encodeURIComponent(id)}/${action}`, 'POST');
     await refreshData();
+  });
+  const closeSettings = () => {
+    if (mutationLock.current) return;
+    setSettingsOpen(false);
+    setCaptureDraft(null);
+    setModelDraft({ models: [], activeTextId: null, activeSpeechId: null });
+    setEditingModel(null);
+    setModelDeleteTarget(null);
+    setFormError(null);
+    setMutationError(null);
   };
-
-  const handleTogglePause = async (checked: boolean) => {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ paused: !checked }),
+  const handleSaveSettings = () => mutate(async () => {
+    if (!captureDraft) return;
+    const nextModels = editingModel ? stageSettingsModel(modelDraft, editingModel) : modelDraft;
+    setModelDraft(nextModels);
+    if (editingModel) setEditingModel(null);
+    // The only request made by this dialog: save all changes together.
+    await request('/api/settings', 'POST', {
+      paused: pausedDraft,
+      capturePolicy: { ...captureDraft, allowedProjects: captureDraft.allowedProjects.map(p => p.trim()).filter(Boolean), excludedProjects: captureDraft.excludedProjects.map(p => p.trim()).filter(Boolean) },
+      modelDraft: nextModels,
     });
+    setSettingsOpen(false);
+    setEditingModel(null);
+    setCaptureDraft(null);
+    setModelDraft({ models: [], activeTextId: null, activeSpeechId: null });
     await refreshData();
+  });
+  const handleSetActiveModel = (id: string) => {
+    const model = modelDraft.models.find(m => m.id === id);
+    if (busy || !model) return;
+    setModelDraft({ ...modelDraft, [model.kind === 'text' ? 'activeTextId' : 'activeSpeechId']: id });
   };
-
-  const handleSetActiveModel = async (id: string) => {
-    await fetch(`/api/models/${id}/active`, { method: 'POST' });
-    await refreshData();
-  };
-
-  const handleDeleteModel = async (id: string) => {
-    await fetch(`/api/models/${id}`, { method: 'DELETE' });
-    await refreshData();
+  const handleDeleteModel = (id: string) => {
+    if (busy) return;
+    setModelDraft(removeSettingsModel(modelDraft, id));
+    if (editingModel?.id === id) setEditingModel(null);
+    setModelDeleteTarget(null);
   };
 
   const handleOpenNewModel = (kind: 'text' | 'speech') => {
@@ -471,65 +485,35 @@ export default function App() {
     });
   };
 
-  const handleSaveModel = async () => {
-    if (!editingModel) return;
-    setFormError(null);
+  const handleSaveModel = () => {
+    if (busy) return false;
+    if (!editingModel) return true;
     try {
-      const payload: any = {
-        name: editingModel.name.trim(),
-        kind: editingModel.kind,
-        baseUrl: editingModel.baseUrl.trim(),
-        model: editingModel.model.trim(),
-      };
-      if (editingModel.kind === 'speech') {
-        payload.voice = (editingModel.voice || '').trim() || 'marin';
-      } else {
-        payload.temperature =
-          editingModel.temperature && editingModel.temperature.trim() !== ''
-            ? Number(editingModel.temperature)
-            : null;
-      }
-
-      if (editingModel.id) {
-        // 更新现有模型
-        if (editingModel.apiKey !== undefined && editingModel.apiKey.trim() !== '') {
-          payload.apiKey = editingModel.apiKey.trim();
-        }
-        const res = await fetch(`/api/models/${editingModel.id}`, {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || 'Failed to update model');
-        }
-      } else {
-        // 创建新模型
-        payload.apiKey = editingModel.apiKey?.trim() || '';
-        const res = await fetch('/api/models', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || 'Failed to create model');
-        }
-      }
-
+      setModelDraft(stageSettingsModel(modelDraft, editingModel));
       setEditingModel(null);
-      await refreshData();
-    } catch (err: any) {
-      setFormError(err.message || 'Operation failed');
-    }
+      setFormError(null);
+      return true;
+    } catch (error) { setFormError(error instanceof Error ? error.message : '请检查模型配置。'); return false; }
   };
 
+  const openSettings = () => {
+    if (busy) return;
+    setSettingsTab('text');
+    setEditingModel(null);
+    setFormError(null);
+    setCaptureDraft(structuredClone(status?.capturePolicy || { mode: 'all', allowedProjects: [], excludedProjects: [] }));
+    setPausedDraft(status?.paused || false);
+    setModelDraft({ models: models.map(m => ({ ...m })), activeTextId, activeSpeechId });
+    setMutationError(null);
+    setSettingsOpen(true);
+  };
+
+  const needsModelSetup = status?.mode === 'unconfigured';
   const analysis = selectedEvent?.analysis;
   const cleanHeroEnglish = analysis?.translation?.replace(/\s*\[Demo preview\]\s*/g, '') || '';
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh w-screen overflow-hidden bg-background text-foreground">
       {/* Left Sidebar: Clean shadcn/ui Navigation & Single-Line History */}
       <aside className="flex w-72 shrink-0 flex-col border-r bg-muted/20">
         {/* Brand Header */}
@@ -540,7 +524,7 @@ export default function App() {
             </div>
             <span className="text-sm font-semibold tracking-tight">English Sidecar</span>
             <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">
-              {status?.mode === 'live' ? 'Live' : 'Demo'}
+              {status?.mode === 'live' ? 'Live' : '未配置'}
             </Badge>
           </div>
 
@@ -550,7 +534,7 @@ export default function App() {
               size="icon"
               className="h-7 w-7 text-muted-foreground"
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              title="Toggle theme"
+              aria-label="Toggle theme" title="Toggle theme"
             >
               {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
             </Button>
@@ -558,12 +542,8 @@ export default function App() {
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground"
-              onClick={() => {
-                setEditingModel(null);
-                setFormError(null);
-                setSettingsOpen(true);
-              }}
-              title="Settings"
+              disabled={busy} onClick={openSettings}
+              aria-label="Settings" title="Settings"
             >
               <Settings2 className="h-3.5 w-3.5" />
             </Button>
@@ -590,6 +570,7 @@ export default function App() {
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
+              aria-label={mainMode === 'feed' ? '搜索提示' : '搜索词汇'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={mainMode === 'feed' ? 'Search prompts...' : 'Search vocabulary...'}
@@ -606,7 +587,9 @@ export default function App() {
             <div className="space-y-1">
               {filteredEvents.length === 0 ? (
                 <div className="px-3 py-10 text-center text-xs text-muted-foreground">
-                  No prompts yet.
+                  {search.trim() ? '没有匹配的提示，请尝试其他关键词。' : needsModelSetup
+                    ? '先接入文本模型。采集的提示会保留在队列中，接入后自动处理。'
+                    : '暂无提示。从编码助手提交提示后会自动出现在这里。'}
                 </div>
               ) : (
                 filteredEvents.map((item) => {
@@ -625,16 +608,8 @@ export default function App() {
                       <span className="truncate text-[13px] leading-snug text-foreground">
                         {item.content}
                       </span>
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            item.status === 'complete'
-                              ? 'bg-emerald-500'
-                              : item.status === 'failed'
-                                ? 'bg-destructive'
-                                : 'bg-amber-500'
-                          }`}
-                        />
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+                        <TaskStatusBadge status={item.status} />
                         <span>{AGENT_NAMES[item.source] || item.source}</span>
                         <span>·</span>
                         <span>{formatRelativeTime(item.createdAt)}</span>
@@ -660,29 +635,29 @@ export default function App() {
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <span>Local SQLite</span>
           </div>
-          {status?.demoEnabled && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-              onClick={handleAddSample}
-            >
-              <Plus className="h-3 w-3" />
-              Sample
-            </Button>
-          )}
         </div>
       </aside>
 
       {/* Main Content Area: Breathable, Centered, Progressive Disclosure */}
       <main className="flex-1 overflow-y-auto bg-muted/10">
+        {needsModelSetup && (
+          <div role="status" className="mx-10 mt-4 flex items-center justify-between gap-4 rounded-md border bg-muted/50 p-3 text-xs">
+            <div className="space-y-1">
+              <p className="font-medium">先接入文本模型，开始生成学习内容</p>
+              <p className="text-muted-foreground">当前没有可用的文本模型密钥，不会生成内容。已采集的提示会保持排队，接入并启用带有 API Key 的文本模型后自动处理。</p>
+            </div>
+            <Button size="sm" className="shrink-0 text-xs" disabled={busy} onClick={openSettings}>接入模型</Button>
+          </div>
+        )}
+        {mutationError && <div role="alert" className="mx-10 mt-4 rounded-md bg-destructive/15 p-3 text-xs text-destructive">{mutationError}</div>}
         {mainMode === 'feed' ? (
           selectedEvent ? (
             <div className="mx-auto flex max-w-4xl flex-col gap-6 px-10 py-10">
               {/* 1. Primary Hero Card: The English Expression */}
               <Card className="border-border/80 shadow-xs">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <TaskStatusBadge status={selectedEvent.status} />
                     <Badge variant="secondary" className="font-normal">
                       {AGENT_NAMES[selectedEvent.source] || selectedEvent.source}
                     </Badge>
@@ -701,12 +676,12 @@ export default function App() {
                             className="h-8 gap-1.5 text-xs"
                             onClick={() => speak(cleanHeroEnglish)}
                           >
-                            {isPlayingAudio || speakingText === cleanHeroEnglish ? (
+                            {speakingText === cleanHeroEnglish ? (
                               <VolumeX className="h-3.5 w-3.5 text-destructive" />
                             ) : (
                               <Volume2 className="h-3.5 w-3.5" />
                             )}
-                            Listen
+                            {speakingText === cleanHeroEnglish ? 'Stop' : 'Listen'}
                           </Button>
                           <Badge
                             variant="outline"
@@ -720,7 +695,7 @@ export default function App() {
                             {activeSpeechModel ? activeSpeechModel.name : 'Browser voice'}
                           </Badge>
                           {ttsError && (
-                            <span className="text-[11px] font-medium text-destructive animate-in fade-in duration-200">
+                            <span role="status" className="text-[11px] font-medium text-destructive animate-in fade-in duration-200">
                               {ttsError}
                             </span>
                           )}
@@ -745,23 +720,29 @@ export default function App() {
                         </Button>
                       </>
                     )}
-                    {selectedEvent.status === 'failed' && (
+                    {['failed', 'cancelled'].includes(selectedEvent.status) && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="h-8 gap-1.5 text-xs"
-                        onClick={() => handleRetry(selectedEvent.id)}
+                        disabled={busy}
+                        onClick={() => handleEventAction(selectedEvent.id, 'retry')}
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
                         Retry
                       </Button>
                     )}
+                    {['pending', 'processing'].includes(selectedEvent.status) && (
+                      <Button variant="outline" size="sm" className="h-8 text-xs" disabled={busy}
+                        onClick={() => handleEventAction(selectedEvent.id, 'cancel')}>取消分析</Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(selectedEvent.id)}
-                      title="Delete prompt"
+                      disabled={busy}
+                      onClick={() => { setDeleteTarget(selectedEvent.id); setPurgeKnowledge(false); }}
+                      aria-label="Delete prompt" title="Delete prompt"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -781,7 +762,9 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="py-6 text-sm text-muted-foreground">
-                      {selectedEvent.error || 'Analyzing prompt in the background...'}
+                      {needsModelSetup && selectedEvent.status === 'pending'
+                        ? '等待接入模型：此提示已加入队列。请先接入并启用带有 API Key 的文本模型，之后会自动处理；缺少密钥时不会生成内容。'
+                        : selectedEvent.error || (selectedEvent.status === 'cancelled' ? '分析已取消，可点击 Retry 重试。' : selectedEvent.status === 'skipped' ? '此提示未分析。' : selectedEvent.status === 'failed' ? '分析失败，请重试。' : selectedEvent.status === 'pending' ? '提示已排队，将在后台自动处理。' : 'Analyzing prompt in the background...')}
                     </div>
                   )}
 
@@ -797,24 +780,17 @@ export default function App() {
                   </div>
 
                   {/* Subtle Inline Refinement Comparison */}
-                  {analysis?.corrections && analysis.corrections.length > 0 && (
-                    <div className="rounded-lg bg-muted/50 px-4 py-3 text-xs">
+                  {analysis?.corrections?.map((correction, index) => (
+                    <div key={index} className="rounded-lg bg-muted/50 px-4 py-3 text-xs">
+                      <p className="mb-2 font-medium">{correction.kind === 'style' ? '风格优化（不表示原句有错）' : correction.kind === 'correction' ? '语言纠错' : '纠错 / 风格建议（未分类）'}</p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-muted-foreground line-through">
-                          {analysis.corrections[0].before}
-                        </span>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                        <span className="font-medium text-foreground">
-                          {analysis.corrections[0].after}
-                        </span>
+                        <span className="text-muted-foreground">{correction.before}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                        <span className="font-medium text-foreground">{correction.after}</span>
                       </div>
-                      {analysis.corrections[0].reason && (
-                        <p className="mt-1.5 leading-relaxed text-muted-foreground">
-                          {analysis.corrections[0].reason}
-                        </p>
-                      )}
+                      {correction.reason && <p className="mt-1.5 leading-relaxed text-muted-foreground">{correction.reason}</p>}
                     </div>
-                  )}
+                  ))}
                 </CardContent>
               </Card>
 
@@ -858,7 +834,7 @@ export default function App() {
                                 size="icon"
                                 className="h-7 w-7 shrink-0 text-muted-foreground"
                                 onClick={() => speak(v.term)}
-                                title={`Pronounce ${v.term}`}
+                                aria-label={`Pronounce ${v.term}`} title={`Pronounce ${v.term}`}
                               >
                                 <Volume2 className="h-3.5 w-3.5" />
                               </Button>
@@ -902,10 +878,7 @@ export default function App() {
 
                   {/* Tab 2: 句 (Pattern, Tense, Voice, Constituents & Grammar) */}
                   <TabsContent value="sentence" className="mt-4 space-y-4">
-                    {analysis.sentenceAnatomy &&
-                      (analysis.sentenceAnatomy.pattern ||
-                        analysis.sentenceAnatomy.tense ||
-                        analysis.sentenceAnatomy.voice) && (
+                    {(
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                           <Card className="border-border/70 shadow-2xs">
                             <CardHeader className="pb-1.5 pt-3.5">
@@ -913,7 +886,7 @@ export default function App() {
                                 句子结构 · Pattern
                               </CardDescription>
                               <CardTitle className="text-xs font-semibold leading-snug">
-                                {analysis.sentenceAnatomy.pattern || 'SVO 主谓宾结构'}
+                                {analysis.sentenceAnatomy?.pattern || '暂无分析'}
                               </CardTitle>
                             </CardHeader>
                           </Card>
@@ -924,7 +897,7 @@ export default function App() {
                                 时态解析 · Tense
                               </CardDescription>
                               <CardTitle className="text-xs font-semibold leading-snug">
-                                {analysis.sentenceAnatomy.tense || '一般现在时 Simple Present'}
+                                {analysis.sentenceAnatomy?.tense || '暂无分析'}
                               </CardTitle>
                             </CardHeader>
                           </Card>
@@ -935,7 +908,7 @@ export default function App() {
                                 语态解析 · Voice
                               </CardDescription>
                               <CardTitle className="text-xs font-semibold leading-snug">
-                                {analysis.sentenceAnatomy.voice || '主动语态 Active Voice'}
+                                {analysis.sentenceAnatomy?.voice || '暂无分析'}
                               </CardTitle>
                             </CardHeader>
                           </Card>
@@ -1006,7 +979,7 @@ export default function App() {
                         </CardHeader>
                         <CardContent>
                           <p className="text-xs font-medium leading-relaxed text-foreground">
-                            {analysis.discourse?.logic || '诉求声明 → 约束条件 → 机制落地'}
+                            {analysis.discourse?.logic || '暂无分析'}
                           </p>
                         </CardContent>
                       </Card>
@@ -1022,7 +995,7 @@ export default function App() {
                         </CardHeader>
                         <CardContent>
                           <p className="text-xs leading-relaxed text-muted-foreground">
-                            {analysis.discourse?.cohesion || analysis.notes}
+                            {analysis.discourse?.cohesion || '暂无分析'}
                           </p>
                         </CardContent>
                       </Card>
@@ -1033,10 +1006,10 @@ export default function App() {
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                           <div>
                             <CardTitle className="text-sm font-semibold">
-                              成段升格示范 · Production Engineering Paragraph
+                              扩展练习 · Extended Paragraph
                             </CardTitle>
                             <CardDescription className="text-xs">
-                              将单句指令扩展为标准 RFC / PR / 技术文档段落
+                              扩展为 RFC / PR / 技术文档段落，可能引入额外设定；不是原文翻译。
                             </CardDescription>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -1088,6 +1061,7 @@ export default function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 shrink-0 text-muted-foreground"
+                                aria-label={`朗读例句 ${ex.english}`}
                                 onClick={() => speak(ex.english)}
                               >
                                 <Volume2 className="h-3.5 w-3.5" />
@@ -1110,15 +1084,16 @@ export default function App() {
                 <BookOpen className="h-5 w-5 text-muted-foreground" />
               </div>
               <div className="space-y-1">
-                <h2 className="text-base font-semibold">No prompt selected</h2>
+                <h2 className="text-base font-semibold">{needsModelSetup ? '先接入文本模型' : search.trim() ? '没有匹配的提示' : '还没有提示'}</h2>
                 <p className="max-w-sm text-xs text-muted-foreground">
-                  Submit a prompt from your coding agent or load a sample lesson to start learning.
+                  {needsModelSetup
+                    ? '接入并启用带有 API Key 的文本模型后，即可生成学习内容。已采集的提示会保留在队列中，接入后自动处理。'
+                    : search.trim() ? '请尝试其他关键词，或清空搜索查看历史提示。' : '从编码助手提交提示，系统会在后台自动生成学习内容。'}
                 </p>
               </div>
-              {status?.demoEnabled && (
-                <Button size="sm" className="mt-2 gap-1.5 text-xs" onClick={handleAddSample}>
-                  <Plus className="h-3.5 w-3.5" />
-                  Load Sample Lesson
+              {needsModelSetup && (
+                <Button size="sm" className="mt-2 gap-1.5 text-xs" disabled={busy} onClick={openSettings}>
+                  接入模型
                 </Button>
               )}
             </div>
@@ -1155,6 +1130,7 @@ export default function App() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground"
+                          aria-label={`朗读 ${item.term}`}
                           onClick={() => speak(item.term)}
                         >
                           <Volume2 className="h-3.5 w-3.5" />
@@ -1172,17 +1148,43 @@ export default function App() {
         )}
       </main>
 
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!busy && !open) setDeleteTarget(null); }}>
+        <AlertDialogContent aria-busy={busy}>
+          <AlertDialogTitle className="text-base font-semibold text-balance">删除提示卡片？</AlertDialogTitle>
+          <AlertDialogDescription className="text-sm text-muted-foreground text-pretty">默认只删除此卡片，保留已积累的词汇与语法。此操作不可撤销。</AlertDialogDescription>
+          <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={purgeKnowledge} disabled={busy} onChange={(e) => setPurgeKnowledge(e.target.checked)} />同时删除此提示关联的派生知识（其他提示共享或此前明确保留的知识仍会保留）</label>
+          {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
+          <div className="flex justify-end gap-2"><AlertDialogCancel asChild><Button variant="outline" disabled={busy}>取消</Button></AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={() => deleteTarget && handleDelete(deleteTarget)}>{busy ? '删除中…' : purgeKnowledge ? '删除卡片及关联知识' : '只删除卡片'}</Button></div>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={!!modelDeleteTarget} onOpenChange={(open) => { if (!busy && !open) setModelDeleteTarget(null); }}>
+        <AlertDialogContent aria-busy={busy}>
+          <AlertDialogTitle className="text-base font-semibold text-balance">移除此模型配置？</AlertDialogTitle>
+          <AlertDialogDescription className="text-sm text-muted-foreground text-pretty">将此模型从设置草稿中移除。只有点击设置底部「确定」才会删除配置与密钥，点击「取消」可保留原配置。</AlertDialogDescription>
+          {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
+          <div className="flex justify-end gap-2"><AlertDialogCancel asChild><Button variant="outline" disabled={busy}>取消</Button></AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={() => modelDeleteTarget && handleDeleteModel(modelDeleteTarget)}>移出草稿</Button></div>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Settings Dialog: Enhanced with Multi-Model Configuration */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-xl max-h-[88vh] overflow-y-auto">
+      <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings(); }}>
+        <DialogContent
+          onPointerDownOutside={(event) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.closest('[data-sidecar-select-content]')) event.preventDefault();
+          }}
+          onFocusOutside={(event) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.closest('[data-sidecar-select-content]')) event.preventDefault();
+          }}
+          aria-busy={busy} className="sm:max-w-xl max-h-[88dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Preferences</DialogTitle>
             <DialogDescription className="text-xs">
-              Configure background collection, custom text LLMs, and TTS voice providers.
+              配置采集范围、文本模型与语音模型。所有修改在点击底部「确定」后生效。
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 py-2">
+          <div className="min-h-0 space-y-5 overflow-y-auto py-2 pr-1">
             {/* Capture Toggle */}
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-0.5">
@@ -1192,24 +1194,47 @@ export default function App() {
                 </div>
               </div>
               <Switch
-                checked={!status?.paused}
-                onCheckedChange={handleTogglePause}
+                disabled={busy || !status}
+                checked={!pausedDraft}
+                onCheckedChange={(checked) => setPausedDraft(!checked)}
                 aria-label="Capture new prompts"
               />
             </div>
 
             <Separator />
 
+            <div className="space-y-3 text-xs">
+              {captureDraft && <>
+                <label htmlFor="capture-policy" className="block font-medium">项目采集范围</label>
+                <Select
+                  id="capture-policy"
+                  aria-describedby="project-path-hint"
+                  value={captureDraft.mode}
+                  disabled={busy}
+                  onValueChange={(mode) => setCaptureDraft({ ...captureDraft, mode: mode as 'all' | 'allowlist' })}
+                  options={[
+                    { value: 'all', label: '所有项目', description: '自动采集，排除名单中的目录除外' },
+                    { value: 'allowlist', label: '仅允许名单', description: '只采集“允许的项目目录”中的内容' },
+                  ]}
+                />
+                <p id="project-path-hint" className="text-muted-foreground">项目须填写本地绝对目录，每行一个。排除名单优先；仅允许名单模式会拒绝未知项目。</p>
+                <label htmlFor="allowed-projects" className="block font-medium">允许的项目目录</label>
+                <textarea id="allowed-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.allowedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, allowedProjects: e.target.value.split('\n') })} className="w-full rounded-md border bg-background p-2 font-mono" />
+                <label htmlFor="excluded-projects" className="block font-medium">排除的项目目录</label>
+                <textarea id="excluded-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.excludedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, excludedProjects: e.target.value.split('\n') })} className="w-full rounded-md border bg-background p-2 font-mono" />
+              </>}
+            </div>
+            <Separator />
             {/* Model Engine Display */}
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <div className="text-sm font-medium">Model Engine</div>
                 <div className="text-xs text-muted-foreground">
-                  {activeTextModel ? `${activeTextModel.name} (${activeTextModel.model})` : status?.model || 'gpt-4o-mini'}
+                  {activeTextModel ? `${activeTextModel.name} (${activeTextModel.model})` : '尚未接入文本模型'}
                 </div>
               </div>
               <Badge variant={status?.mode === 'live' ? 'default' : 'secondary'}>
-                {status?.mode === 'live' ? 'LIVE' : 'DEMO'}
+                {status?.mode === 'live' ? 'LIVE' : '未配置'}
               </Badge>
             </div>
 
@@ -1220,10 +1245,12 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div className="text-sm font-medium">Model Configurations</div>
               </div>
+              <p className="text-xs text-muted-foreground">学习内容仅由已启用的真实文本模型生成。未配置 API Key 时不会生成内容，提示会保持排队；补充密钥并启用模型后自动处理。</p>
 
               <Tabs
                 value={settingsTab}
                 onValueChange={(v) => {
+                  if (!handleSaveModel()) return;
                   setSettingsTab(v as 'text' | 'speech');
                   setEditingModel(null);
                   setFormError(null);
@@ -1233,10 +1260,10 @@ export default function App() {
                 <div className="flex items-center justify-between pb-2">
                   <TabsList className="grid h-8 grid-cols-2 w-48">
                     <TabsTrigger value="text" className="text-xs">
-                      Text Models ({models.filter((m) => m.kind === 'text').length})
+                      Text Models ({modelDraft.models.filter((m) => m.kind === 'text').length})
                     </TabsTrigger>
                     <TabsTrigger value="speech" className="text-xs">
-                      TTS Models ({models.filter((m) => m.kind === 'speech').length})
+                      TTS Models ({modelDraft.models.filter((m) => m.kind === 'speech').length})
                     </TabsTrigger>
                   </TabsList>
 
@@ -1245,7 +1272,7 @@ export default function App() {
                       size="sm"
                       variant="outline"
                       className="h-7 gap-1 px-2.5 text-xs"
-                      onClick={() => handleOpenNewModel(settingsTab)}
+                      disabled={busy} onClick={() => handleOpenNewModel(settingsTab)}
                     >
                       <Plus className="h-3 w-3" />
                       Add {settingsTab === 'text' ? 'Text' : 'TTS'} Model
@@ -1264,22 +1291,22 @@ export default function App() {
                         variant="ghost"
                         size="sm"
                         className="h-6 px-1.5 text-xs text-muted-foreground"
-                        onClick={() => setEditingModel(null)}
+                        disabled={busy} onClick={() => setEditingModel(null)}
                       >
                         Cancel
                       </Button>
                     </div>
 
                     {formError && (
-                      <div className="rounded-md bg-destructive/15 p-2 text-xs text-destructive">
+                      <div id="model-form-error" role="alert" className="rounded-md bg-destructive/15 p-2 text-xs text-destructive">
                         {formError}
                       </div>
                     )}
 
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs">
                       <div className="space-y-1">
-                        <label className="font-medium text-muted-foreground">Display Name</label>
-                        <Input
+                        <label htmlFor="model-name" className="font-medium text-muted-foreground">Display Name</label>
+                        <Input disabled={busy} id="model-name" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
                           value={editingModel.name}
                           onChange={(e) => setEditingModel({ ...editingModel, name: e.target.value })}
                           placeholder={editingModel.kind === 'text' ? 'e.g. OpenAI GPT-4o' : 'e.g. OpenAI Voice'}
@@ -1288,8 +1315,8 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="font-medium text-muted-foreground">Model Identifier</label>
-                        <Input
+                        <label htmlFor="model-id" className="font-medium text-muted-foreground">Model Identifier</label>
+                        <Input disabled={busy} id="model-id" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
                           value={editingModel.model}
                           onChange={(e) => setEditingModel({ ...editingModel, model: e.target.value })}
                           placeholder={editingModel.kind === 'text' ? 'e.g. gpt-6-luna' : 'e.g. tts-1'}
@@ -1298,8 +1325,8 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1 sm:col-span-2">
-                        <label className="font-medium text-muted-foreground">Base URL</label>
-                        <Input
+                        <label htmlFor="model-base-url" className="font-medium text-muted-foreground">Base URL</label>
+                        <Input disabled={busy} id="model-base-url" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
                           value={editingModel.baseUrl}
                           onChange={(e) => setEditingModel({ ...editingModel, baseUrl: e.target.value })}
                           placeholder="https://api.openai.com/v1"
@@ -1311,27 +1338,33 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1 sm:col-span-2">
-                        <label className="font-medium text-muted-foreground">API Key</label>
-                        <Input
+                        <label htmlFor="model-api-key" className="font-medium text-muted-foreground">API Key</label>
+                        <Input id="model-api-key" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
                           type="password"
                           value={editingModel.apiKey || ''}
+                          disabled={busy || editingModel.clearApiKey}
                           onChange={(e) => setEditingModel({ ...editingModel, apiKey: e.target.value })}
                           placeholder={
                             editingModel.id
-                              ? 'Leave blank to preserve existing key (enter space/clear to delete)'
+                              ? '留空保留旧密钥；清除请勾选下方控件'
                               : 'sk-...'
                           }
                           className="h-8 text-xs font-mono"
                         />
+                        {editingModel.id && <label className="flex items-center gap-2 text-xs">
+                          <input type="checkbox" checked={!!editingModel.clearApiKey} disabled={busy} onChange={(e) => setEditingModel({ ...editingModel, clearApiKey: e.target.checked, apiKey: '' })} />
+                          清除已保存密钥（点击底部「确定」后生效）
+                        </label>}
+                        {editingModel.id && editingModel.baseUrl.trim().replace(/\/+$/, '') !== modelDraft.models.find((m) => m.id === editingModel.id)?.baseUrl.replace(/\/+$/, '') && <p id="provider-key-hint" className="text-xs text-muted-foreground">Provider Base URL 已更改，须重新输入密钥，或明确选择清除密钥。旧密钥不会发送给新 Provider。</p>}
                         <span className="text-[10px] text-muted-foreground">
-                          Stored strictly in ~/.english-sidecar (0600 mode). Never exposed to browser.
+                          密钥提交后保存在本地受限权限文件中；读取配置只返回掩码，不返回完整密钥。
                         </span>
                       </div>
 
                       {editingModel.kind === 'speech' ? (
                         <div className="space-y-1">
-                          <label className="font-medium text-muted-foreground">Voice Name</label>
-                          <Input
+                          <label htmlFor="model-voice" className="font-medium text-muted-foreground">Voice Name</label>
+                          <Input disabled={busy} id="model-voice"
                             value={editingModel.voice || ''}
                             onChange={(e) => setEditingModel({ ...editingModel, voice: e.target.value })}
                             placeholder="marin (or alloy, echo, nova...)"
@@ -1340,8 +1373,8 @@ export default function App() {
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          <label className="font-medium text-muted-foreground">Temperature (Optional)</label>
-                          <Input
+                          <label htmlFor="model-temperature" className="font-medium text-muted-foreground">Temperature (Optional)</label>
+                          <Input disabled={busy} id="model-temperature"
                             type="number"
                             step="0.1"
                             min="0"
@@ -1363,12 +1396,12 @@ export default function App() {
                         size="sm"
                         variant="ghost"
                         className="h-7 text-xs"
-                        onClick={() => setEditingModel(null)}
+                        disabled={busy} onClick={() => setEditingModel(null)}
                       >
                         Cancel
                       </Button>
-                      <Button size="sm" className="h-7 text-xs" onClick={handleSaveModel}>
-                        Save Model
+                      <Button size="sm" disabled={busy} className="h-7 text-xs" onClick={handleSaveModel}>
+                        完成编辑
                       </Button>
                     </div>
                   </div>
@@ -1376,15 +1409,15 @@ export default function App() {
 
                 {/* Text Models Tab Content */}
                 <TabsContent value="text" className="mt-2 space-y-2">
-                  {models.filter((m) => m.kind === 'text').length === 0 ? (
+                  {modelDraft.models.filter((m) => m.kind === 'text').length === 0 ? (
                     <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
-                      No text models configured. Falling back to default environment variables.
+                      尚未配置文本模型。点击 Add Text Model 添加配置并填写 API Key，启用后会自动处理排队中的提示。
                     </div>
                   ) : (
-                    models
+                    modelDraft.models
                       .filter((m) => m.kind === 'text')
                       .map((m) => {
-                        const isActive = m.id === activeTextId;
+                        const isActive = m.id === modelDraft.activeTextId;
                         return (
                           <div
                             key={m.id}
@@ -1395,6 +1428,8 @@ export default function App() {
                             <div className="flex items-start gap-2.5">
                               <button
                                 type="button"
+                                disabled={busy || isActive}
+                                aria-label={`Activate ${m.name}`}
                                 onClick={() => handleSetActiveModel(m.id)}
                                 className="mt-0.5"
                                 title={isActive ? 'Currently active' : 'Click to activate'}
@@ -1420,7 +1455,7 @@ export default function App() {
                                 <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
                                   <span className="truncate max-w-[200px]">{m.baseUrl}</span>
                                   <span>·</span>
-                                  <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : 'No API key'}</span>
+                                  <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : '未配置 API Key，不会生成内容'}</span>
                                   {m.temperature !== null && m.temperature !== undefined && (
                                     <>
                                       <span>·</span>
@@ -1436,6 +1471,8 @@ export default function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground"
+                                disabled={busy}
+                                aria-label={`Edit ${m.name}`}
                                 onClick={() => handleOpenEditModel(m)}
                                 title="Edit"
                               >
@@ -1445,7 +1482,9 @@ export default function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => handleDeleteModel(m.id)}
+                                disabled={busy}
+                                aria-label={`Delete ${m.name}`}
+                                onClick={() => { setMutationError(null); setModelDeleteTarget(m.id); }}
                                 title="Delete"
                               >
                                 <Trash2 className="h-3 w-3" />
@@ -1459,15 +1498,15 @@ export default function App() {
 
                 {/* Speech (TTS) Models Tab Content */}
                 <TabsContent value="speech" className="mt-2 space-y-2">
-                  {models.filter((m) => m.kind === 'speech').length === 0 ? (
+                  {modelDraft.models.filter((m) => m.kind === 'speech').length === 0 ? (
                     <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
                       No TTS models configured. Listen uses local Browser voice by default.
                     </div>
                   ) : (
-                    models
+                    modelDraft.models
                       .filter((m) => m.kind === 'speech')
                       .map((m) => {
-                        const isActive = m.id === activeSpeechId;
+                        const isActive = m.id === modelDraft.activeSpeechId;
                         return (
                           <div
                             key={m.id}
@@ -1478,6 +1517,8 @@ export default function App() {
                             <div className="flex items-start gap-2.5">
                               <button
                                 type="button"
+                                disabled={busy || isActive}
+                                aria-label={`Activate ${m.name}`}
                                 onClick={() => handleSetActiveModel(m.id)}
                                 className="mt-0.5"
                                 title={isActive ? 'Currently active' : 'Click to activate'}
@@ -1516,6 +1557,8 @@ export default function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground"
+                                disabled={busy}
+                                aria-label={`Edit ${m.name}`}
                                 onClick={() => handleOpenEditModel(m)}
                                 title="Edit"
                               >
@@ -1525,7 +1568,9 @@ export default function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => handleDeleteModel(m.id)}
+                                disabled={busy}
+                                aria-label={`Delete ${m.name}`}
+                                onClick={() => { setMutationError(null); setModelDeleteTarget(m.id); }}
                                 title="Delete"
                               >
                                 <Trash2 className="h-3 w-3" />
@@ -1537,6 +1582,13 @@ export default function App() {
                   )}
                 </TabsContent>
               </Tabs>
+            </div>
+          </div>
+          <div className="space-y-3 border-t pt-4">
+            {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" disabled={busy} onClick={closeSettings}>取消</Button>
+              <Button disabled={busy || !captureDraft || !status} onClick={handleSaveSettings}>{busy ? '提交中…' : '确定'}</Button>
             </div>
           </div>
         </DialogContent>

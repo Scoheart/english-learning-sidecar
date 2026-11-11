@@ -301,7 +301,7 @@ test('switching text model dynamically changes model, baseUrl, and key for next 
     while (Date.now() < deadline2) {
       const res = await fetch(`${base}/api/events`);
       const body = await res.json();
-      if (body.events.find((e) => e.turnId === 't2')?.status === 'complete') break;
+      if (body.events.some((e) => e.analysis?.translation === 'Dynamic switch success') && capturedRequests.length === 2) break;
       await new Promise((r) => setTimeout(r, 40));
     }
 

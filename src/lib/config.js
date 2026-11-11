@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { validateBaseUrl } from './models.js';
 
 export function loadConfig(env = process.env) {
   const port = Number(env.SIDECAR_PORT ?? 4317);
@@ -15,18 +16,13 @@ export function loadConfig(env = process.env) {
   }
   const dataDir = path.resolve(env.SIDECAR_DATA_DIR || path.join(os.homedir(), '.english-sidecar'));
   const apiKey = env.LEARNING_API_KEY?.trim() || '';
-  const mode = env.LEARNING_MODE || (apiKey ? 'live' : 'demo');
-  if (!['live', 'demo'].includes(mode)) throw new Error('LEARNING_MODE must be demo or live');
-  if (mode === 'live' && !apiKey) throw new Error('LEARNING_API_KEY is required when LEARNING_MODE=live');
-  const baseUrl = env.LEARNING_BASE_URL || 'https://api.openai.com/v1';
-  const parsed = new URL(baseUrl);
-  if (!['https:', 'http:'].includes(parsed.protocol)) throw new Error('Invalid LEARNING_BASE_URL');
-  if (mode === 'live' && parsed.protocol !== 'https:' && !['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)) {
-    throw new Error('Remote LEARNING_BASE_URL must use HTTPS');
-  }
+  // Live-only: legacy LEARNING_MODE values no longer enable a synthetic fallback.
+  // Stored credentials may also be configured through the UI after startup.
+  const mode = apiKey ? 'live' : 'unconfigured';
+  const baseUrl = validateBaseUrl(env.LEARNING_BASE_URL || 'https://api.openai.com/v1');
   return {
-    port, host, dataDir, mode, apiKey, baseUrl: baseUrl.replace(/\/+$/, ''),
-    model: env.LEARNING_MODEL || 'gpt-4o-mini', demoEnabled: env.SIDECAR_DEMO === '1',
+    port, host, dataDir, mode, apiKey, baseUrl,
+    model: env.LEARNING_MODEL || 'gpt-4o-mini',
   };
 }
 

@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAnalyzer, validateAnalysis } from '../src/lib/analyzer.js';
 
-test('returns clearly labelled demo content when no provider is configured', async () => {
-  const analyze = createAnalyzer({mode:'demo'});
-  const result = await analyze('任意用户输入');
-  assert.match(result.notes,/演示数据/);
+test('missing key prompts model setup and never creates fake content, even with legacy Demo config', async () => {
+  let called = false;
+  const analyze = createAnalyzer({ mode: 'demo', apiKey: '' }, async () => { called = true; });
+  await assert.rejects(() => analyze('任意用户输入'), /请先接入模型/);
+  assert.equal(called, false);
 });
 
 test('sends safe structured messages to compatible model endpoint', async () => {

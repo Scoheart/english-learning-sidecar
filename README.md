@@ -1,127 +1,140 @@
 # English Learning Sidecar
 
-**An always-available, private, non-intrusive English learning companion for coding agents.**
+A local, non-intrusive English learning companion for coding agents.
 
-English Sidecar receives a **copy of your prompt** from an Agent Hook, analyzes it via a separate, optional OpenAI-compatible model API, and renders an English lesson in its own browser UI. The main Agent does not know about the English lesson and never waits for the model's teaching response.
-
-![Status: MVP](https://img.shields.io/badge/status-local_MVP-5576c6) ![Runtime](https://img.shields.io/badge/node-%3E%3D22.13-2e7459) ![Dependencies](https://img.shields.io/badge/runtime_dependencies-0-2e7459)
-
-## Features
-
-- **Independent pipeline** — native Hooks → authenticated localhost collector → async learning model → SQLite → live Web UI.
-- **Codex, Cursor, Claude Code and Grok Build adapters** — dry-run/opt-in safe installer; existing hooks are preserved with backups.
-- **Refined UI** — compact, neutral two-column learning feed, keyboard search (`/`), dark mode, and locally bundled Lucide SVG icons (no CDN).
-- **Pi extension** — fire-and-forget raw input observation; no prompt transformation.
-- **Provider independent** — OpenAI-compatible `/chat/completions`; bring your own API key.
-- **Learning cards** — Chinese → fluent English, real English corrections, vocabulary, grammar, examples, usage, recap.
-- **Knowledge library** — deduplicated vocabulary and grammar records across conversations.
-- **Private by default** — binds only to `127.0.0.1`, authenticated capture endpoint, no third-party fonts, sanitized local storage, no raw secret retention.
-- **Pause/resume & history** — controlled from Web UI. Failed analyses can be manually retried.
+Hooks copy user-authored text to a local collector. A separate model produces English learning cards; it never writes teaching content back into the main Agent's prompt. The UI uses React, TypeScript, Tailwind and shadcn/ui. The backend uses Node.js and SQLite.
 
 ## Quick start
 
-Requires **Node.js >= 22.13**. No `npm install` is required.
+Requires Node.js >= 22.13 and npm. Install dependencies before building or developing the frontend:
 
-```bash
+```sh
+npm ci
+npm run typecheck
+npm run build
+# Only if no local .env exists yet:
 cp .env.example .env
 npm start
-# open http://127.0.0.1:4317
+# http://127.0.0.1:4317
 ```
 
-With no `LEARNING_API_KEY`, the app starts in **Demo preview** mode. Demo lessons are fixed examples and are **not** genuine analyses of the submitted text. For a live model, edit `.env`:
+The built frontend is served by the local Node service. Pulling source changes does not rebuild bundles or restart an already running backend. After updating, rebuild, restart your existing Sidecar process when appropriate, and refresh its page. Do not run a second process on the same port.
 
-```ini
-LEARNING_MODE=live
-LEARNING_API_KEY=YOUR_KEY_HERE
-LEARNING_BASE_URL=https://api.openai.com/v1
-LEARNING_MODEL=gpt-4o-mini
+For development, run the backend and frontend in separate terminals:
+
+```sh
+npm run dev       # backend with file watching
+npm run dev:web   # http://127.0.0.1:5173; proxies /api to 4317
 ```
 
-Restart `npm start`. The `LEARNING_API_KEY` is never served to the browser or stored in SQLite.
+## Connect a model (Live only)
 
-Send a local smoke-test prompt, without Agent installation:
+Settings supports adding, editing, selecting and deleting separate text and speech model configurations. The dialog has a single **确定 / 取消 (Confirm / Cancel)** footer: capture switches, project rules, model edits, selection and removal are local drafts until Confirm submits them together. Cancel, Escape or closing the dialog discards unsaved changes. Completing a model form only stages that edit; Confirm also includes a valid model form still being edited. Validation failures keep the draft open without partial application. Saved changes apply to the next analysis, not a model request already in progress.
 
-```bash
-npm run smoke
-# or run npm run dev to enable a UI sample button
-```
+Only real model analysis is supported. Auto/Demo modes, fixed teaching cards and the sample endpoint have been removed. Legacy `LEARNING_MODE` / `SIDECAR_DEMO` environment values are ignored and saved mode preferences are migrated to Live; they cannot re-enable generated fixtures. Existing history is preserved.
+
+When the selected text model has no API key or a valid endpoint, the UI shows **请先接入模型** and a **接入模型** button that opens text-model settings. Captured events stay queued, without any model call or fabricated lesson. After you configure and activate a model with a key, pending work resumes automatically unless collection is paused. Presence of a key does not guarantee valid credentials: actual upstream failures are reported as failed analyses, never silently replaced by samples.
+
+On first startup, the environment's `LEARNING_BASE_URL`, `LEARNING_MODEL` and `LEARNING_API_KEY` seed the initial text configuration. Once a configuration exists, edit it in Settings; changing environment variables does not overwrite saved models. With no saved text model, the complete environment configuration is used as a fallback. Endpoint, model and key are never mixed field-by-field between providers.
+
+Editing a model with a blank key input **preserves** its existing key. Use the explicit **Clear saved API key** checkbox to remove it. Changing the Base URL requires re-entering a key or explicitly clearing it; the backend also clears old credentials when an endpoint changes. URLs cannot contain credentials, query parameters or fragments.
+
+Keys stay on the backend. API responses expose only a masked value. Model configurations are stored in `models.json` under the data directory with mode 0600 where supported. This is permission-protected local plaintext, **not encrypted storage**. Keep backups private.
+
+Text models use OpenAI-compatible `/chat/completions`; speech models use `/audio/speech`. Text requests time out after 90 seconds and TTS after 20 seconds. Provider compatibility and voice availability must be validated with your chosen service.
+
+## Learning experience
+
+- Chinese-to-English translation, English correction and optional style suggestions.
+- Four-layer curriculum: morphology/phonetics, vocabulary/collocations, sentence anatomy and discourse.
+- Real corrections, optional style improvements and unclassified legacy suggestions are labeled separately. Only exact source excerpts are retained as correction candidates; this does not guarantee linguistic correctness.
+- Missing analysis fields display as unavailable rather than invented grammar conclusions.
+- Expanded paragraphs are explicitly **practice expansions, not translations or verified requirements**.
+- Searchable recent history, knowledge library, copy, speech playback and live SSE updates.
+- Cancel pending/processing analysis; cancelled and failed records can be retried.
+- TTS playback cancels prior requests and releases audio resources when stopped or replaced. Failures can fall back to browser speech.
 
 ## Install an Agent Hook
 
-Run from inside the Sidecar project. By default the installer targets **the current project** (least privilege), and only previews changes unless you explicitly add `--apply`:
+Install only in authorized workspaces. The installer defaults to the current project and previews changes unless `--apply` is supplied:
 
-```bash
-node bin/install-hooks.cjs codex                 # preview
-node bin/install-hooks.cjs codex --apply         # project-only
-node bin/install-hooks.cjs cursor --apply        # project-only
-node bin/install-hooks.cjs claude --apply        # project-only
-node bin/install-hooks.cjs grok --apply          # project-only
-
-# To observe every local project (consider privacy first):
+```sh
+node bin/install-hooks.cjs codex
+node bin/install-hooks.cjs codex --apply
+node bin/install-hooks.cjs cursor --apply
+node bin/install-hooks.cjs claude --apply
+node bin/install-hooks.cjs grok --apply
+# Explicit global scope, only after considering privacy:
 node bin/install-hooks.cjs codex --scope=user --apply
 ```
 
-This installer handles **Codex, Cursor, Claude Code and Grok Build**. The **Pi** extension resides at `extensions/pi/english-sidecar.ts` and can be installed at `~/.pi/agent/extensions/`. Qoder and DSH can use the generic collector API but do not yet have verified dedicated installers. See [the integration guide](docs/INTEGRATIONS.md).
+Existing hooks are preserved with backups. Codex/Grok may require reviewing and trusting hooks in their own UI; no trust bypass is used. Grok compatibility loading can execute overlapping Cursor/Claude hooks, so inspect its hook sources.
 
-**Codex:** open `/hooks` and review/trust the hook after installation. **Grok Build:** open `/hooks`, and trust the project if using project-scoped hooks (`/hooks-trust`). Global Grok hooks live in `~/.grok/hooks/`. No trust bypass is used. If you also have Cursor hooks installed, Grok may load them through its compatibility layer and create duplicates—review `/hooks` sources and disable overlapping compatibility only when appropriate.
+Pi has an input extension at `extensions/pi/english-sidecar.ts`. Qoder and DSH do **not** yet have verified dedicated installers. See [Integrations](docs/INTEGRATIONS.md) for details. Adapter implementation and synthetic tests are not proof of real-Agent compatibility.
 
-## Architecture
+Hooks have a short local request deadline and fail open. Codex/Claude/Grok stdout stays empty; Cursor only returns `{"continue":true}`. This protects the main task from collector errors, but is not zero execution overhead. Events sent while the collector is offline can be lost; only accepted events are durably queued.
 
-```mermaid
-flowchart LR
-    A[Agent Prompt] --> B[Hook Adapter]
-    A --> X[Main Agent - unchanged]
-    B --> C[Local authenticated Collector]
-    C --> D[Sanitize & deduplicate]
-    D --> E[SQLite queue]
-    E --> F[Independent Model API]
-    F --> G[Lesson & Knowledge]
-    G --> H[Web UI / SSE]
+## Privacy and project control
+
+Settings includes a project capture policy:
+
+- **All projects** is the compatibility default.
+- **Allowlist** accepts only explicitly allowed absolute directories and their children.
+- Excluded directories take precedence; directory boundaries are respected (`/work/app` does not include `/work/app-other`).
+- Unknown projects are rejected in allowlist mode. Invalid or relative rules are rejected when saved.
+
+Hook/Pi adapters send a project path only to the local collector for this decision. Only its hash is stored on an event, not the original path. Matching is lexical: it does not resolve symlink aliases. Configure the paths your Agent actually reports; this is not a filesystem security sandbox.
+
+Before persistence and model transmission, the collector extracts natural-language text, removes code fences, serialized blocks and recognizable code/log lines, and redacts common credential formats and email addresses. Session and turn identifiers are hashed. Skipped payloads retain a safe placeholder, not the original code/log text. Legacy queued events are filtered again before analysis. TTS input is filtered too.
+
+**Filtering is best-effort, not a confidentiality guarantee.** Natural-language business information can remain sensitive. Do not enable external analysis for unauthorized work. Existing stored history is not retroactively scrubbed by this update. A policy change affects new capture; it does not erase existing history or revoke a request already sent to a provider.
+
+The service binds only to loopback. Ingestion requires a random local token, and Host/Origin checks protect local APIs from web origins and DNS rebinding. The UI has no separate user login: other software on your computer can access it. Do not expose it through a public tunnel or reverse proxy without additional authentication. Browser voice engines may depend on the browser/OS vendor's implementation.
+
+## Deletion and cancellation
+
+Deletion asks you to choose:
+
+1. **Card only**: removes the prompt/card and its link to the knowledge library; explicitly retained knowledge and historical encounter counts remain.
+2. **Card and derived knowledge**: removes that card's contribution. Shared knowledge remains if another card or an earlier explicit retention still references it; unused knowledge is removed.
+
+Cancelling or deleting an active card aborts the local request, prevents late results from recreating the card or knowledge, and lets the next queued task proceed. Providers may already have processed or billed a request before cancellation; local cancellation is not a remote deletion guarantee. Legacy orphan knowledge is preserved during migration, since its origin can no longer be established.
+
+## Storage and always-on operation
+
+The default data directory is `~/.english-sidecar`, configurable with `SIDECAR_DATA_DIR`. It contains SQLite, the capture token, and model configuration. SQLite stores sanitized learning records, vocabulary/grammar, global pause and settings; unfinished processing resumes after restart. New schema fields are migrated additively.
+
+This is event-driven: idle time does not trigger model calls. For login startup on macOS, see [Always-on setup](docs/ALWAYS_ON.md). Installing the repository does not automatically install that service.
+
+Current limits: events API returns at most 150 recent records; the knowledge API defaults to 100. Full pagination, mastery tracking, spaced repetition, automatic assistant-reply analysis, budgets and automatic provider failover are not implemented.
+
+## Verification
+
+```sh
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm run smoke  # explicitly submits a synthetic prompt to your configured local service
 ```
 
-- A Hook process uses a short local request deadline and exits successfully even if the Sidecar is unavailable. For Codex/Claude/Grok it emits **no stdout**, preventing context injection. For Cursor it emits the schema-required `{"continue":true}` only.
-- Async work is durable in SQLite; unfinished jobs resume after restart. New inputs get a `202 Accepted` response after local persistence.
-- The HTTP server never binds to the LAN. The ingestion endpoint requires a random local bearer token saved at `~/.english-sidecar/ingest-token` with restrictive file permissions where supported.
+Tests use temporary local data and mocked model/TTS responses. They do not require a real provider key. Smoke tests can invoke your live model; run them only intentionally. Real provider behavior and browser/Agent end-to-end compatibility still require explicit acceptance testing.
 
-## Privacy and limitations
-
-- Prompt content is redacted **before persistence and before any external model request**, using best-effort secret and email patterns. **Regex filtering cannot guarantee perfect detection of confidential data**. Avoid installing in sensitive workspaces; do not grant external API use without appropriate authorization.
-- The UI is available to software on your local machine at `127.0.0.1:4317`; it has no separate user login. Do not expose it via a tunnel, reverse proxy or public network without additional authentication.
-- MVP captures only text. Images, attached files, transcripts, and tool results are intentionally excluded. `assistant.reply` can be stored but is not analyzed.
-- Background errors are recorded; the main Agent never blocks on analysis completion. Actual Hook execution still incurs a small startup/local-IPC overhead.
-- Dedup uses source/session/turn IDs when present. Sources without turn IDs use a short time bucket and can miss some rapid repeats.
-- Windows was not validated for Hook shell quoting or POSIX permissions.
-- Demo mode must not be interpreted as real translation.
-
-## Always-on deployment
-
-For a macOS login service, see [Always-on setup](docs/ALWAYS_ON.md). The MVP runs locally; it is not a hosted or cloud background service.
-
-## Development and verification
-
-```bash
-npm test              # Node built-in test runner; no network required
-SIDECAR_DEMO=1 npm start
-```
-
-Suggested next steps: real-provider integration test, finer privacy/project allowlists, automatic opt-in assistant reply capture, Qoder and DSH Adapter validation, spaced repetition and learning progress.
-
-## API surface
+## API highlights
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/status` | Mode, paused state, counters |
-| `GET /api/events` | Local event history |
-| `GET /api/knowledge` | Learned words and grammar |
-| `GET /api/stream` | SSE updates |
-| `POST /api/events` | Authenticated Agent collection (`X-Sidecar-Token`) |
-| `POST /api/settings` | Pause/resume local collection |
-| `POST /api/demo` | Manual example, only when `SIDECAR_DEMO=1` |
-| `POST /api/events/:id/retry` | Retry a failed analysis |
-| `DELETE /api/events/:id` | Delete locally saved event |
+| `GET /api/status` | Effective mode, selected models, policy, pause and counters |
+| `GET /api/events` / `GET /api/knowledge` | Recent learning history / knowledge |
+| `GET /api/stream` | SSE notifications |
+| `POST /api/events` | Authenticated Agent capture (`X-Sidecar-Token`) |
+| `GET/POST /api/settings` | Capture policy and pause |
+| `GET/POST /api/models` | List masked configurations / create |
+| `PATCH/DELETE /api/models/:id` | Edit / remove configuration |
+| `POST /api/models/:id/active` | Select a model |
+| `POST /api/tts` | On-demand speech proxy |
+| `POST /api/events/:id/cancel` | Cancel queued or active analysis |
+| `POST /api/events/:id/retry` | Retry failed or cancelled analysis |
+| `DELETE /api/events/:id?knowledge=keep\|purge` | Delete card with explicit knowledge scope |
 
-## Attribution
-
-- Local UI icons use [Lucide](https://lucide.dev/) under ISC/MIT; see [LICENSE-ICONS.md](LICENSE-ICONS.md).
-
-Architecture is independent of any single Agent. Hook examples align with the official [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), [Claude Code](https://code.claude.com/docs/en/hooks), [Pi](https://pi.dev/docs/latest/extensions), and [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/10-hooks.md) docs, and should be revalidated against the installed Agent version.
+Local icons use [Lucide](https://lucide.dev/); see [icon licenses](LICENSE-ICONS.md).

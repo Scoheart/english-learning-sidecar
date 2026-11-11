@@ -8,7 +8,7 @@ import { createSidecar } from '../src/lib/server.js';
 
 async function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidecar-server-'));
-  const app = createSidecar({host:'127.0.0.1',port:0,dataDir:dir,mode:'demo',apiKey:'',model:'',demoEnabled:true},
+  const app = createSidecar({host:'127.0.0.1',port:0,dataDir:dir,mode:'unconfigured',apiKey:'',model:''},
     {analyzer:async (input) => ({translation:`English: ${input}`,vocabulary:[{term:'life cycle',meaning:'生命周期'}],grammar:[],examples:[]})});
   const address = await app.start();
   const token = fs.readFileSync(path.join(dir,'ingest-token'),'utf8').trim();
@@ -68,10 +68,10 @@ test('pause, origin protection, disabled capture and static content',async()=>{
   } finally {await s.close();}
 });
 
-test('manual UI sample works when explicitly enabled',async()=>{
+test('removed Demo endpoint cannot generate lessons',async()=>{
   const s=await fixture();
   try {
     const r=await fetch(`${s.base}/api/demo`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt:'讲一下 Tool Discovery'})});
-    assert.equal(r.status,202);
+    assert.equal(r.status,404);
   } finally {await s.close();}
 });
