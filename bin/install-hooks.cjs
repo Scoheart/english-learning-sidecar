@@ -9,11 +9,11 @@ const args = process.argv.slice(2);
 const agent = args[0];
 const scope = args.find(x => x.startsWith('--scope='))?.split('=')[1] || 'project';
 const apply = args.includes('--apply');
-if (!['codex', 'claude', 'cursor'].includes(agent) || !['project', 'user'].includes(scope)) {
-  console.error('Usage: node bin/install-hooks.cjs codex|claude|cursor [--scope=project|user] [--apply]');
+if (!['codex', 'claude', 'cursor', 'grok'].includes(agent) || !['project', 'user'].includes(scope)) {
+  console.error('Usage: node bin/install-hooks.cjs codex|claude|cursor|grok [--scope=project|user] [--apply]');
   process.exitCode = 1;
 } else {
-  const paths = { codex: '.codex/hooks.json', claude: '.claude/settings.json', cursor: '.cursor/hooks.json' };
+  const paths = { codex: '.codex/hooks.json', claude: '.claude/settings.json', cursor: '.cursor/hooks.json', grok: '.grok/hooks/english-sidecar.json' };
   const base = scope === 'user' ? os.homedir() : process.cwd();
   const destination = path.join(base, paths[agent]);
   const hookPath = path.join(root, 'bin/hook.cjs');

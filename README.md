@@ -9,7 +9,8 @@ English Sidecar receives a **copy of your prompt** from an Agent Hook, analyzes 
 ## Features
 
 - **Independent pipeline** — native Hooks → authenticated localhost collector → async learning model → SQLite → live Web UI.
-- **Codex, Cursor and Claude Code adapters** — dry-run/opt-in safe installer; existing hooks are preserved with backups.
+- **Codex, Cursor, Claude Code and Grok Build adapters** — dry-run/opt-in safe installer; existing hooks are preserved with backups.
+- **Refined UI** — compact, neutral two-column learning feed, keyboard search (`/`), dark mode, and locally bundled Lucide SVG icons (no CDN).
 - **Pi extension** — fire-and-forget raw input observation; no prompt transformation.
 - **Provider independent** — OpenAI-compatible `/chat/completions`; bring your own API key.
 - **Learning cards** — Chinese → fluent English, real English corrections, vocabulary, grammar, examples, usage, recap.
@@ -54,14 +55,15 @@ node bin/install-hooks.cjs codex                 # preview
 node bin/install-hooks.cjs codex --apply         # project-only
 node bin/install-hooks.cjs cursor --apply        # project-only
 node bin/install-hooks.cjs claude --apply        # project-only
+node bin/install-hooks.cjs grok --apply          # project-only
 
 # To observe every local project (consider privacy first):
 node bin/install-hooks.cjs codex --scope=user --apply
 ```
 
-This installer handles **Codex, Cursor, Claude Code**. The **Pi** extension resides at `extensions/pi/english-sidecar.ts` and can be installed at `~/.pi/agent/extensions/`. Qoder and DSH can use the generic collector API but do not yet have verified dedicated installers. See [the integration guide](docs/INTEGRATIONS.md).
+This installer handles **Codex, Cursor, Claude Code and Grok Build**. The **Pi** extension resides at `extensions/pi/english-sidecar.ts` and can be installed at `~/.pi/agent/extensions/`. Qoder and DSH can use the generic collector API but do not yet have verified dedicated installers. See [the integration guide](docs/INTEGRATIONS.md).
 
-**Codex:** open `/hooks` and review/trust the hook after installation. No trust bypass is used.
+**Codex:** open `/hooks` and review/trust the hook after installation. **Grok Build:** open `/hooks`, and trust the project if using project-scoped hooks (`/hooks-trust`). Global Grok hooks live in `~/.grok/hooks/`. No trust bypass is used. If you also have Cursor hooks installed, Grok may load them through its compatibility layer and create duplicates—review `/hooks` sources and disable overlapping compatibility only when appropriate.
 
 ## Architecture
 
@@ -77,7 +79,7 @@ flowchart LR
     G --> H[Web UI / SSE]
 ```
 
-- A Hook process uses a short local request deadline and exits successfully even if the Sidecar is unavailable. For Codex/Claude it emits **no stdout**, preventing context injection. For Cursor it emits the schema-required `{"continue":true}` only.
+- A Hook process uses a short local request deadline and exits successfully even if the Sidecar is unavailable. For Codex/Claude/Grok it emits **no stdout**, preventing context injection. For Cursor it emits the schema-required `{"continue":true}` only.
 - Async work is durable in SQLite; unfinished jobs resume after restart. New inputs get a `202 Accepted` response after local persistence.
 - The HTTP server never binds to the LAN. The ingestion endpoint requires a random local bearer token saved at `~/.english-sidecar/ingest-token` with restrictive file permissions where supported.
 
@@ -120,4 +122,6 @@ Suggested next steps: real-provider integration test, finer privacy/project allo
 
 ## Attribution
 
-Architecture is independent of any single Agent. Hook examples align with the official [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), [Claude Code](https://code.claude.com/docs/en/hooks), and [Pi](https://pi.dev/docs/latest/extensions) docs, and should be revalidated against the installed Agent version.
+- Local UI icons use [Lucide](https://lucide.dev/) under ISC/MIT; see [LICENSE-ICONS.md](LICENSE-ICONS.md).
+
+Architecture is independent of any single Agent. Hook examples align with the official [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), [Claude Code](https://code.claude.com/docs/en/hooks), [Pi](https://pi.dev/docs/latest/extensions), and [Grok Build](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/10-hooks.md) docs, and should be revalidated against the installed Agent version.

@@ -11,7 +11,7 @@ import { normalizeIncomingEvent } from './privacy.js';
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_BODY_BYTES = 128 * 1024;
 const MIME = { '/': 'text/html; charset=utf-8', '/index.html': 'text/html; charset=utf-8',
-  '/app.js': 'text/javascript; charset=utf-8', '/styles.css': 'text/css; charset=utf-8' };
+  '/app.js': 'text/javascript; charset=utf-8', '/icons.js': 'text/javascript; charset=utf-8', '/styles.css': 'text/css; charset=utf-8' };
 
 function json(res, status, data) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });

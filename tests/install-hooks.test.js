@@ -36,3 +36,24 @@ test('Cursor installer adds the required beforeSubmitPrompt handler',()=>{
     assert.match(cfg.hooks.beforeSubmitPrompt[0].command,/cursor$/);
   } finally {fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('Grok Build project hook installs without touching other Hook sources and is idempotent',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'sidecar-grok-'));
+  try {
+    fs.mkdirSync(path.join(dir,'.grok','hooks'),{recursive:true});
+    const file=path.join(dir,'.grok','hooks','english-sidecar.json');
+    fs.writeFileSync(file,JSON.stringify({hooks:{SessionStart:[{hooks:[{type:'command',command:'echo untouched'}]}]}}));
+    assert.equal(run(dir,'grok').status,0);
+    assert.equal(JSON.parse(fs.readFileSync(file)).hooks.UserPromptSubmit,undefined);
+    assert.equal(run(dir,'grok','--apply').status,0);
+    assert.equal(run(dir,'grok','--apply').status,0);
+    const cfg=JSON.parse(fs.readFileSync(file));
+    assert.equal(cfg.hooks.SessionStart[0].hooks[0].command,'echo untouched');
+    assert.equal(cfg.hooks.UserPromptSubmit.length,1);
+    assert.match(cfg.hooks.UserPromptSubmit[0].hooks[0].command,/hook\.cjs" grok/);
+    assert.equal(cfg.hooks.UserPromptSubmit[0].hooks[0].timeout,2);
+    assert.ok(fs.readdirSync(path.dirname(file)).some(f=>f.includes('.backup-')));
+    assert.equal(fs.existsSync(path.join(dir,'.cursor','hooks.json')),false);
+    assert.equal(fs.existsSync(path.join(dir,'.claude','settings.json')),false);
+  } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});

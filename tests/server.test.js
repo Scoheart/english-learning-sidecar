@@ -62,6 +62,8 @@ test('pause, origin protection, disabled capture and static content',async()=>{
     const ingest=await fetch(`${s.base}/api/events`,{method:'POST',headers:{'content-type':'application/json','x-sidecar-token':s.token},body:JSON.stringify({source:'codex',content:'Hello'})});
     assert.equal((await ingest.json()).ignored,true);
     const page=await fetch(`${s.base}/`);assert.equal(page.status,200);assert.match(await page.text(),/English Sidecar/);
+    const icons=await fetch(`${s.base}/icons.js`);assert.equal(icons.status,200);assert.match(await icons.text(),/Lucide SVG icon shapes/);
+    const style=await fetch(`${s.base}/styles.css`);assert.equal(style.status,200);assert.match(await style.text(),/summary-strip/);
     const traversal=await fetch(`${s.base}/not-found`);assert.equal(traversal.status,404);
   } finally {await s.close();}
 });
