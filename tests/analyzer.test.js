@@ -23,6 +23,35 @@ test('sends safe structured messages to compatible model endpoint', async () => 
   assert.equal(input.messages[1].role,'user');
 });
 
+test('limits every learning section to the user question and excludes links and page content', async () => {
+  assert.match(SYSTEM_PROMPT, /user's own natural-language question or request/);
+  assert.match(SYSTEM_PROMPT, /Exclude links from ALL learning analysis/);
+  assert.match(SYSTEM_PROMPT, /Markdown\/HTML link destinations/);
+  assert.match(SYSTEM_PROMPT, /Never open a link or analyze\/summarize the linked page/);
+  assert.match(SYSTEM_PROMPT, /exclude standalone pasted link titles and previews/);
+  assert.match(SYSTEM_PROMPT, /Preserve meaningful words and named entities/);
+  assert.match(SYSTEM_PROMPT, /translation, corrections, vocabulary, sentence anatomy, grammar, discourse, examples, notes, and summary/);
+  assert.match(SYSTEM_PROMPT, /If no user-authored question or request remains, do not invent one/);
+  let messages;
+  const analyze = createAnalyzer({ model: 'test-model', apiKey: 'fake-key', baseUrl: 'https://example.com/v1' }, async (_url, options) => {
+    messages = JSON.parse(options.body).messages;
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ translation: 'Could you explain this to me?' }) } }] }) };
+  });
+  await analyze('https://example.com/financial-markets?year=2026 帮我解释一下这个');
+  assert.equal(messages[0].content, SYSTEM_PROMPT);
+  assert.match(messages[0].content, /study only '帮我解释一下这个'/);
+});
+
+test('excludes images, attachment metadata and extracted text while retaining the user question', () => {
+  assert.match(SYSTEM_PROMPT, /Exclude images and attachments from ALL learning analysis/);
+  for (const scope of ['OCR/extracted text', 'including alt text', 'HTML img tags', 'data URLs/base64', 'attachment names', 'automatically generated image descriptions']) {
+    assert.ok(SYSTEM_PROMPT.includes(scope), scope);
+  }
+  assert.match(SYSTEM_PROMPT, /even if the user's question asks the main assistant to do so/);
+  assert.match(SYSTEM_PROMPT, /study only '这张图是什么意思？'/);
+  assert.match(SYSTEM_PROMPT, /image-only input must not become an invented question or lesson/);
+});
+
 test('teaches communication across topics without imposing an engineering register', () => {
   assert.match(SYSTEM_PROMPT, /real communication across all topics/);
   assert.match(SYSTEM_PROMPT, /everyday life, relationships, feelings, travel, culture, study, work, technology/);
