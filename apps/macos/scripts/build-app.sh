@@ -2,7 +2,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
-[[ "$(uname -s)" == Darwin ]] || { echo "Build the macOS app on macOS 14+ with Xcode command-line tools." >&2; exit 1; }
+[[ "$(uname -s)" == Darwin ]] || { echo "Build the macOS app on macOS 14+ with Xcode command-line tools (Swift 6+)." >&2; exit 1; }
 BUNDLE=0
 if [[ "${1:-}" == --bundle-engine ]]; then BUNDLE=1
 elif [[ -n "${1:-}" ]]; then echo "Usage: bash scripts/build-app.sh [--bundle-engine]" >&2; exit 1; fi
@@ -14,6 +14,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/EnglishSidecar" "$APP/Contents/MacOS/EnglishSidecar"
 cp "$BIN/SidecarHook" "$APP/Contents/MacOS/SidecarHook"
 cp "$HERE/Resources/Info.plist" "$APP/Contents/Info.plist"
+cp "$HERE/Resources/DynamicNotchKit-LICENSE" "$APP/Contents/Resources/DynamicNotchKit-LICENSE"
 if [[ "$BUNDLE" == 1 ]]; then
   NODE="${NODE_BINARY:-$(command -v node || true)}"
   [[ -x "$NODE" ]] || { echo "Node >=22.13 is needed on the build machine to bundle the existing engine." >&2; exit 1; }

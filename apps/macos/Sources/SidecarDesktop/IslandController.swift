@@ -1,49 +1,59 @@
 import AppKit
 import SwiftUI
 import Combine
+import SidecarCore
+import DynamicNotchKit
 
 @MainActor final class IslandState: ObservableObject {
-    @Published var expanded = false
-    @Published var pinned = false
-}
-private final class LearningPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-}
-private final class IslandHostingView<Content: View>: NSHostingView<Content> {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    @Published var interaction = IslandInteraction()
+    @Published var floating = false
+    var expanded: Bool { interaction.expanded }
+    var pinned: Bool { interaction.pinned }
 }
 func displayID(_ screen: NSScreen) -> String { (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue ?? "primary" }
 
+/// Own application behavior; delegate the actual notch shape, safe area and
+/// animation to the pinned upstream package. Never run overlapping transitions.
 @MainActor final class IslandController {
+    private typealias Notch = DynamicNotch<AnyView, AnyView, AnyView>
     private let store: DesktopStore
     private let state = IslandState()
-    private let panel: LearningPanel
+    private var cache: [Bool: Notch] = [:]
+    private var active: Notch?
+    private var activeDisplay: String?
+    private var probes: [String: WeakIslandProbe] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var hoverTask: Task<Void, Never>?
+    private var worker: Task<Void, Never>?
+    private var displayTask: Task<Void, Never>?
     private var monitors: [Any] = []
     private var suspended = false
+    private var dirty = false
+    private var reload = false
     private var pointerInside = false
 
     init(store: DesktopStore) {
         self.store = store
-        panel = LearningPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
-        panel.level = .floating; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
-        panel.isMovable = false; panel.becomesKeyOnlyIfNeeded = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        let hosting = IslandHostingView(rootView: IslandView(store: store, state: state,
-            hover: { [weak self] inside in self?.hover(inside) },
-            pin: { [weak self] in self?.togglePin() }))
-        hosting.sizingOptions = []
-        panel.contentView = hosting
-        // @Published emits in willSet. Schedule window updates after values commit.
         store.$islandEnabled.receive(on: RunLoop.main).sink { [weak self] enabled in
-            if enabled { self?.show() } else { self?.hide() }
+            if !enabled { self?.resetInteraction(); self?.orderOutAll() }
+            self?.requestPresentation()
         }.store(in: &cancellables)
-        store.$islandDisplay.receive(on: RunLoop.main).sink { [weak self] _ in self?.position() }.store(in: &cancellables)
+        store.$islandDisplay.receive(on: RunLoop.main).sink { [weak self] _ in self?.requestPresentation(reload: true) }.store(in: &cancellables)
+        store.$islandPresentation.receive(on: RunLoop.main).sink { [weak self] _ in
+            self?.resetInteraction(); self?.requestPresentation(reload: true)
+        }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
-            .sink { [weak self] _ in self?.position() }.store(in: &cancellables)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                orderOutAll()
+                displayTask?.cancel()
+                displayTask = Task {
+                    // Let the library finish its own screen observer before reapplying
+                    // the user's display choice and closing unused cached panels.
+                    do { try await Task.sleep(nanoseconds: 150_000_000) } catch { return }
+                    requestPresentation(reload: true)
+                }
+            }.store(in: &cancellables)
         for name in [NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
             NSWorkspace.shared.notificationCenter.publisher(for: name).sink { [weak self] _ in
                 self?.suspended = true; self?.hide()
@@ -51,53 +61,149 @@ func displayID(_ screen: NSScreen) -> String { (screen.deviceDescription[NSDevic
         }
         for name in [NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
             NSWorkspace.shared.notificationCenter.publisher(for: name).sink { [weak self] _ in
-                self?.suspended = false; self?.show()
+                self?.suspended = false; self?.requestPresentation(reload: true)
             }.store(in: &cancellables)
         }
-        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved], handler: { [weak self] _ in self?.updateHitTesting() }) { monitors.append(monitor) }
-        if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved], handler: { [weak self] event in self?.updateHitTesting(); return event }) { monitors.append(monitor) }
-        show()
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in self?.updateHitTesting() }) { monitors.append(m) }
+        if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in self?.updateHitTesting(); return event }) { monitors.append(m) }
+        requestPresentation()
     }
-    func hide() { pointerInside = false; hoverTask?.cancel(); panel.orderOut(nil); state.expanded = false; state.pinned = false; store.islandInteracting = false }
-    private func show() { guard store.islandEnabled, !suspended else { return }; position(); panel.orderFrontRegardless(); updateHitTesting() }
-    private func position(animated: Bool = false) {
-        guard let screen = NSScreen.screens.first(where: { displayID($0) == store.islandDisplay }) ?? NSScreen.screens.first else { return }
-        let width: CGFloat = state.expanded ? 420 : 220
-        let height: CGFloat = state.expanded ? 226 : 36
-        // Visible frame deliberately puts content BELOW menu bar/notch on every display.
-        let frame = NSRect(x: screen.visibleFrame.midX - width / 2, y: screen.visibleFrame.maxY - height - 8, width: width, height: height)
-        if animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                panel.animator().setFrame(frame, display: true)
+
+    func hide() { suspended = true; resetInteraction(); orderOutAll(); requestPresentation() }
+    private func resetInteraction() {
+        hoverTask?.cancel(); pointerInside = false
+        state.interaction.hide(); store.islandInteracting = false
+    }
+    private func orderOutAll() { for notch in cache.values { notch.windowController?.window?.orderOut(nil) } }
+    private var screen: NSScreen? {
+        NSScreen.screens.first { displayID($0) == store.islandDisplay } ?? NSScreen.screens.first
+    }
+    private func notch(floating: Bool) -> Notch {
+        if let existing = cache[floating] { return existing }
+        let instance = Notch(hoverBehavior: [], style: floating ? .floating : .notch, expanded: { [weak self] in
+            guard let self else { return AnyView(EmptyView()) }
+            return AnyView(IslandView(store: store, state: state, pin: { [weak self] in self?.togglePin() }, measured: { [weak self] in self?.record("expanded", $0) }))
+        }, compactLeading: { [weak self] in
+            AnyView(IslandCompactLeading(pin: { [weak self] in self?.togglePin() }, measured: { [weak self] in self?.record("leading", $0) }))
+        }, compactTrailing: { [weak self] in
+            guard let self else { return AnyView(EmptyView()) }
+            return AnyView(IslandCompactTrailing(store: store, pin: { [weak self] in self?.togglePin() }, measured: { [weak self] in self?.record("trailing", $0) }))
+        })
+        // Reuse only two instances: upstream owns a long-lived screen observer.
+        cache[floating] = instance
+        instance.objectWillChange.receive(on: RunLoop.main).sink { [weak self, weak instance] _ in
+            guard let self, let instance else { return }
+            if active === instance && store.islandEnabled && !suspended {
+                if let controller = instance.windowController { _ = IslandPanelBridge.nonactivating(controller) }
+                updateHitTesting()
+            } else { instance.windowController?.window?.orderOut(nil) }
+        }.store(in: &cancellables)
+        return instance
+    }
+
+    private func requestPresentation(reload: Bool = false) {
+        dirty = true; self.reload = self.reload || reload
+        guard worker == nil else { return }
+        worker = Task { [weak self] in
+            guard let self else { return }
+            while dirty && !Task.isCancelled {
+                dirty = false
+                let recreate = self.reload; self.reload = false
+                await present(recreate: recreate)
             }
-        } else { panel.setFrame(frame, display: true) }
+            worker = nil
+        }
+    }
+    private func present(recreate: Bool) async {
+        guard store.islandEnabled, !suspended, let screen else {
+            for instance in cache.values { await instance.hide(); instance.windowController?.close(); instance.windowController = nil }
+            active = nil; activeDisplay = nil; probes.removeAll()
+            return
+        }
+        let hardwareNotch = screen.auxiliaryTopLeftArea != nil && screen.auxiliaryTopRightArea != nil
+        let floating = store.islandPresentation.isFloating(hasHardwareNotch: hardwareNotch)
+        let next = notch(floating: floating)
+        if recreate || active !== next || activeDisplay != displayID(screen) {
+            if let active { await active.hide(); active.windowController?.close(); active.windowController = nil }
+            for instance in cache.values where instance !== next { instance.windowController?.window?.orderOut(nil) }
+            probes.removeAll()
+            active = next; activeDisplay = displayID(screen)
+        }
+        guard store.islandEnabled, !suspended else { dirty = true; return }
+        state.floating = floating
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        next.transitionConfiguration = .init(
+            openingAnimation: reduceMotion ? .linear(duration: 0) : nil,
+            closingAnimation: reduceMotion ? .linear(duration: 0) : nil,
+            conversionAnimation: reduceMotion ? .linear(duration: 0) : nil,
+            skipIntermediateHides: true)
+        let command = store.islandPresentation.command(visible: true, expanded: state.expanded, hasHardwareNotch: hardwareNotch)
+        let transition = Task { @MainActor in
+            if command == .compact { await next.compact(on: screen) }
+            else { await next.expand(on: screen) }
+        }
+        await Task.yield()
+        if let controller = next.windowController { _ = IslandPanelBridge.nonactivating(controller) }
+        await transition.value
+        if let controller = next.windowController { _ = IslandPanelBridge.nonactivating(controller) }
+        if !store.islandEnabled || suspended { orderOutAll(); dirty = true }
         updateHitTesting()
     }
+
+    private func record(_ part: String, _ view: IslandProbeView) {
+        guard view.window === active?.windowController?.window else { return }
+        probes[part] = WeakIslandProbe(view)
+        updateHitTesting()
+    }
+    private func area(_ part: String) -> CGRect? {
+        guard let view = probes[part]?.view, view.window === active?.windowController?.window else { return nil }
+        return view.screenRect
+    }
     private func updateHitTesting() {
-        guard panel.isVisible else { return }
-        let mouse = NSEvent.mouseLocation
-        let local = CGPoint(x: mouse.x - panel.frame.minX, y: mouse.y - panel.frame.minY)
-        let radius: CGFloat = state.expanded ? 22 : 18
-        let shape = CGPath(roundedRect: CGRect(origin: .zero, size: panel.frame.size), cornerWidth: radius, cornerHeight: radius, transform: nil)
-        let inside = shape.contains(local)
-        panel.ignoresMouseEvents = !inside
+        guard let window = active?.windowController?.window, window.isVisible, let screen else { return }
+        let rect: CGRect
+        if state.floating {
+            guard let content = area("expanded") else { window.ignoresMouseEvents = true; return }
+            rect = content.insetBy(dx: -15, dy: -15)
+        } else if state.expanded {
+            guard let content = area("expanded") else { window.ignoresMouseEvents = true; return }
+            rect = CGRect(x: content.minX - 30, y: content.minY - 15, width: content.width + 60, height: max(0, screen.frame.maxY - content.minY + 15))
+        } else {
+            guard let leading = area("leading"), let trailing = area("trailing") else { window.ignoresMouseEvents = true; return }
+            let content = leading.union(trailing)
+            let height = max(screen.safeAreaInsets.top, screen.frame.maxY - screen.visibleFrame.maxY, content.height)
+            rect = CGRect(x: content.minX - 14, y: screen.frame.maxY - height, width: content.width + 28, height: height)
+        }
+        let inside: Bool
+        if state.floating {
+            inside = CGPath(roundedRect: rect, cornerWidth: 20, cornerHeight: 20, transform: nil).contains(NSEvent.mouseLocation)
+        } else { inside = rect.contains(NSEvent.mouseLocation) }
+        window.ignoresMouseEvents = !inside
         hover(inside)
     }
     private func hover(_ inside: Bool) {
         guard inside != pointerInside else { return }
         pointerInside = inside
         hoverTask?.cancel()
-        if state.pinned { return }
-        hoverTask = Task {
+        hoverTask = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: inside ? 350_000_000 : 500_000_000) } catch { return }
-            state.expanded = inside; store.islandInteracting = inside; position(animated: true)
-            if !inside { store.islandLessonID = store.lessons.first { $0.status == "complete" }?.id }
+            guard let self, store.islandEnabled, !suspended else { return }
+            state.interaction.hover(inside)
+            store.islandInteracting = state.expanded
+            requestPresentation()
+            if !state.expanded { store.islandLessonID = store.lessons.first { $0.status == "complete" }?.id }
         }
     }
     private func togglePin() {
-        hoverTask?.cancel(); state.pinned.toggle(); state.expanded = state.pinned
-        store.islandInteracting = state.pinned; position(animated: true)
+        hoverTask?.cancel()
+        state.interaction.hover(pointerInside)
+        state.interaction.togglePin()
+        store.islandInteracting = state.expanded
+        requestPresentation()
     }
-    deinit { for monitor in monitors { NSEvent.removeMonitor(monitor) } }
+    deinit {
+        hoverTask?.cancel(); worker?.cancel(); displayTask?.cancel()
+        for monitor in monitors { NSEvent.removeMonitor(monitor) }
+    }
 }
