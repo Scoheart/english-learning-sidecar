@@ -1176,6 +1176,10 @@ export default function App() {
             const target = event.target as HTMLElement | null;
             if (target?.closest('[data-sidecar-select-content]')) event.preventDefault();
           }}
+          onEscapeKeyDown={(event) => {
+            // Let an open Select consume the first Escape before closing the dialog.
+            if (document.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
+          }}
           aria-busy={busy} className="sm:max-w-xl max-h-[88dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Preferences</DialogTitle>
