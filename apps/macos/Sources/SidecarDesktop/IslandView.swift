@@ -15,7 +15,7 @@ struct IslandView: View {
     }
     var body: some View {
         Group {
-            if state.floating && !state.expanded {
+            if state.compactInExpandedShell && !state.expanded {
                 HStack(spacing: 10) {
                     Image(systemName: "book.closed.fill")
                     Text(title).lineLimit(1)

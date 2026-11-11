@@ -19,9 +19,10 @@ public enum IslandPresentationMode: String, CaseIterable, Sendable {
 
     public func command(visible: Bool, expanded: Bool, hasHardwareNotch: Bool) -> IslandCommand {
         guard visible else { return .hide }
-        // Upstream compact() HIDES floating windows. Keep expanded() and render
-        // our own small content in floating mode so there is always a hover target.
-        return expanded || isFloating(hasHardwareNotch: hasHardwareNotch) ? .expand : .compact
+        // Upstream compact() hides floating windows. Its virtual notch may also
+        // have zero height when the menu bar auto-hides. Render small content in
+        // the expanded shell in both cases, keeping an actual hover target.
+        return expanded || !hasHardwareNotch || isFloating(hasHardwareNotch: hasHardwareNotch) ? .expand : .compact
     }
 }
 

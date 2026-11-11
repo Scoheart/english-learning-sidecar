@@ -67,8 +67,11 @@ final class HistoryAndIslandTests: XCTestCase {
     }
     func testFloatingCompactNeverCallsLibraryCompactThatWouldHideIt() {
         XCTAssertEqual(IslandPresentationMode.floating.command(visible: true, expanded: false, hasHardwareNotch: false), .expand)
-        XCTAssertEqual(IslandPresentationMode.notch.command(visible: true, expanded: false, hasHardwareNotch: false), .compact)
+        XCTAssertEqual(IslandPresentationMode.notch.command(visible: true, expanded: false, hasHardwareNotch: true), .compact)
         XCTAssertEqual(IslandPresentationMode.notch.command(visible: true, expanded: true, hasHardwareNotch: true), .expand)
+    }
+    func testVirtualNotchKeepsContentVisibleEvenWhenMenuBarIsHidden() {
+        XCTAssertEqual(IslandPresentationMode.notch.command(visible: true, expanded: false, hasHardwareNotch: false), .expand)
     }
     func testHiddenAlwaysWinsOverPresentationMode() {
         for mode in IslandPresentationMode.allCases {

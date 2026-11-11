@@ -7,6 +7,7 @@ import DynamicNotchKit
 @MainActor final class IslandState: ObservableObject {
     @Published var interaction = IslandInteraction()
     @Published var floating = false
+    @Published var compactInExpandedShell = false
     var expanded: Bool { interaction.expanded }
     var pinned: Bool { interaction.pinned }
 }
@@ -51,7 +52,7 @@ func displayID(_ screen: NSScreen) -> String { (screen.deviceDescription[NSDevic
                     // Let the library finish its own screen observer before reapplying
                     // the user's display choice and closing unused cached panels.
                     do { try await Task.sleep(nanoseconds: 150_000_000) } catch { return }
-                    requestPresentation(reload: true)
+                    self.requestPresentation(reload: true)
                 }
             }.store(in: &cancellables)
         for name in [NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
@@ -132,6 +133,7 @@ func displayID(_ screen: NSScreen) -> String { (screen.deviceDescription[NSDevic
         }
         guard store.islandEnabled, !suspended else { dirty = true; return }
         state.floating = floating
+        state.compactInExpandedShell = floating || !hardwareNotch
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         next.transitionConfiguration = .init(
             openingAnimation: reduceMotion ? .linear(duration: 0) : nil,
@@ -166,9 +168,14 @@ func displayID(_ screen: NSScreen) -> String { (screen.deviceDescription[NSDevic
         if state.floating {
             guard let content = area("expanded") else { window.ignoresMouseEvents = true; return }
             rect = content.insetBy(dx: -15, dy: -15)
-        } else if state.expanded {
+        } else if state.expanded || state.compactInExpandedShell {
             guard let content = area("expanded") else { window.ignoresMouseEvents = true; return }
-            rect = CGRect(x: content.minX - 30, y: content.minY - 15, width: content.width + 60, height: max(0, screen.frame.maxY - content.minY + 15))
+            let notchWidth: CGFloat
+            if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+                notchWidth = screen.frame.width - left.width - right.width
+            } else { notchWidth = 300 } // Same virtual-notch minimum as pinned upstream.
+            let width = max(content.width + 60, notchWidth + 30)
+            rect = CGRect(x: screen.frame.midX - width / 2, y: content.minY - 15, width: width, height: max(0, screen.frame.maxY - content.minY + 15))
         } else {
             guard let leading = area("leading"), let trailing = area("trailing") else { window.ignoresMouseEvents = true; return }
             let content = leading.union(trailing)
