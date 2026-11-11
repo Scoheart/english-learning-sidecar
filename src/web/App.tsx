@@ -228,7 +228,7 @@ export default function App() {
     try {
       const saved = localStorage.getItem('sidecar-theme');
       if (saved === 'dark' || saved === 'light') return saved;
-    } catch {}
+    } catch { }
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
 
@@ -238,7 +238,7 @@ export default function App() {
     root.dataset.theme = theme;
     try {
       localStorage.setItem('sidecar-theme', theme);
-    } catch {}
+    } catch { }
   }, [theme]);
 
   const refreshData = async () => {
@@ -612,17 +612,15 @@ export default function App() {
                       key={item.id}
                       type="button"
                       onClick={() => setSelectedId(item.id)}
-                      className={`sidebar-prompt-item group flex w-full flex-col gap-1.5 rounded-xl border px-3.5 py-2.5 text-left ${
-                        isSelected
+                      className={`sidebar-prompt-item group flex w-full flex-col gap-1.5 rounded-xl border px-3.5 py-2.5 text-left ${isSelected
                           ? 'border-primary/25 bg-accent/90 text-accent-foreground font-medium shadow-xs'
                           : 'border-transparent text-muted-foreground hover:border-border/60 hover:bg-muted/60 hover:text-foreground'
-                      }`}
+                        }`}
                     >
                       <span
                         aria-hidden="true"
-                        className={`absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-primary transition-all duration-200 ${
-                          isSelected ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'
-                        }`}
+                        className={`absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-primary transition-all duration-200 ${isSelected ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'
+                          }`}
                       />
                       <span className="truncate text-[13px] leading-snug text-foreground">
                         {item.content}
@@ -685,9 +683,8 @@ export default function App() {
                     </Badge>
                     {analysis && (
                       <span
-                        className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                          getCorrectionStatusMeta(analysis.correctionStatus).className
-                        }`}
+                        className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${getCorrectionStatusMeta(analysis.correctionStatus).className
+                          }`}
                       >
                         {getCorrectionStatusMeta(analysis.correctionStatus).label}
                       </span>
@@ -842,19 +839,17 @@ export default function App() {
                         return (
                           <div
                             key={index}
-                            className={`rounded-xl border px-4 py-3.5 text-xs transition-all duration-200 ${
-                              isStyle
+                            className={`rounded-xl border px-4 py-3.5 text-xs transition-all duration-200 ${isStyle
                                 ? 'border-violet-500/25 bg-violet-500/[0.04] dark:bg-violet-500/[0.08]'
                                 : 'border-amber-500/25 bg-amber-500/[0.04] dark:bg-amber-500/[0.08]'
-                            }`}
+                              }`}
                           >
                             <div className="mb-2 flex items-center gap-2">
                               <span
-                                className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${
-                                  isStyle
+                                className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${isStyle
                                     ? 'border-violet-500/30 bg-violet-500/15 text-violet-800 dark:text-violet-200'
                                     : 'border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-200'
-                                }`}
+                                  }`}
                               >
                                 {isStyle
                                   ? '风格升格 · Style Upgrade（不表示原句有错）'
@@ -985,873 +980,865 @@ export default function App() {
                           </CardHeader>
 
                           <CardContent
-                            className={`flex flex-1 flex-col gap-2.5 pt-0 text-xs ${
-                              singleVocabularyCard ? 'lg:grid lg:grid-cols-2 lg:items-start' : ''
-                            }`}
+                            className={`flex flex-1 flex-col gap-2.5 pt-0 text-xs ${singleVocabularyCard ? 'lg:grid lg:grid-cols-2 lg:items-start' : ''
+                              }`}
                           >
-                            <div className="rounded-r-lg border-l-[3px] border-indigo-500 bg-indigo-500/[0.06] dark:bg-indigo-500/[0.11] px-2.5 py-2 space-y-0.5">
-                              <span className="block text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
-                                核心释义 · Meaning
-                              </span>
-                              <CardDescription className="text-xs font-semibold text-foreground">
-                                {v.meaning}
-                              </CardDescription>
-                            </div>
-
-                            {v.morphology && (
-                              <div className="rounded-r-lg border-l-[3px] border-amber-500 bg-amber-500/[0.06] dark:bg-amber-500/[0.10] px-2.5 py-2 space-y-0.5">
-                                <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                                  字源构词 · Morphology
-                                </span>
-                                <p className="leading-relaxed text-foreground/85">
-                                  {v.morphology}
-                                </p>
-                              </div>
-                            )}
-
-                            {v.nuance && (
-                              <div className="rounded-r-lg border-l-[3px] border-violet-500 bg-violet-500/[0.06] dark:bg-violet-500/[0.10] px-2.5 py-2 space-y-0.5">
-                                <span className="block text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
-                                  词义辨析 · Nuance
-                                </span>
-                                <p className="leading-relaxed text-foreground/85">{v.nuance}</p>
-                              </div>
-                            )}
-
-                            {v.usage && (
-                              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] px-2.5 py-1.5 space-y-0.5">
-                                <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                                  常用搭配 · Collocation
-                                </span>
-                                <div className="font-phonetic text-[11.5px] font-medium text-emerald-950 dark:text-emerald-100">
-                                  {v.usage}
+                                <div className="rounded-r-lg border-l-[3px] border-indigo-500 bg-indigo-500/[0.06] dark:bg-indigo-500/[0.11] px-2.5 py-2 space-y-1">
+                                  <span className="block text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                                    核心释义
+                                  </span>
+                                  <CardDescription className="text-xs font-semibold text-foreground">
+                                    {v.meaning}
+                                  </CardDescription>
                                 </div>
-                              </div>
+
+                                {v.morphology && (
+                                      <div className="rounded-r-lg border-l-[3px] border-amber-500 bg-amber-500/[0.06] dark:bg-amber-500/[0.10] px-2.5 py-2 space-y-1">
+                                        <span className="block text-xs font-semibold text-amber-700 dark:text-amber-300">
+                                          字源构词
+                                        </span>
+                                          <p className="text-xs leading-relaxed text-foreground/85">
+                                            {v.morphology}
+                                          </p>
+                                      </div>
                             )}
-                            <div className="min-w-0 space-y-3 lg:col-span-2">
-                              <VocabularyDetails vocabulary={v} onSpeak={speak} />
-                            </div>
-                          </CardContent>
-                        </Card>
+
+                                      {v.nuance && (
+                                            <div className="rounded-r-lg border-l-[3px] border-violet-500 bg-violet-500/[0.06] dark:bg-violet-500/[0.10] px-2.5 py-2 space-y-1">
+                                              <span className="block text-xs font-semibold text-violet-700 dark:text-violet-300">
+                                                词义辨析
+                                              </span>
+                                              <p className="text-xs leading-relaxed text-foreground/85">{v.nuance}</p>
+                                            </div>
+                            )}
+
+                                            {v.usage && (
+                                                  <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] px-2.5 py-1.5 space-y-1">
+                                                    <span className="block text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                                      常用搭配
+                                                    </span>
+                                                      <div className="font-phonetic text-xs font-medium text-emerald-950 dark:text-emerald-100">
+                                                        {v.usage}
+                                                      </div>
+                                                    </div>
+                            )}
+                                                    <div className="min-w-0 space-y-3 lg:col-span-2">
+                                                      <VocabularyDetails vocabulary={v} onSpeak={speak} />
+                                                    </div>
+                                                  </CardContent>
+                                                </Card>
                       ))}
-                    </div>
+                                              </div>
                   </TabsContent>
 
-                  {/* Tab 2: 句 (Pattern, Tense, Voice, Constituents & Grammar) */}
-                  <TabsContent value="sentence" className="mt-4 space-y-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <Card className="surface-card border-t-[3px] border-t-indigo-500 border-border/70 bg-indigo-500/[0.02] shadow-2xs">
-                        <CardHeader className="pb-2.5 pt-3.5">
-                          <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
-                            句子结构 · Pattern
-                          </CardDescription>
-                          <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
-                            {analysis.sentenceAnatomy?.pattern || '暂无分析'}
-                          </CardTitle>
-                        </CardHeader>
-                      </Card>
+                                          {/* Tab 2: 句 (Pattern, Tense, Voice, Constituents & Grammar) */}
+                                          <TabsContent value="sentence" className="mt-4 space-y-4">
+                                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                              <Card className="surface-card border-t-[3px] border-t-indigo-500 border-border/70 bg-indigo-500/[0.02] shadow-2xs">
+                                                <CardHeader className="pb-2.5 pt-3.5">
+                                                  <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                                                    句子结构 · Pattern
+                                                  </CardDescription>
+                                                  <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
+                                                    {analysis.sentenceAnatomy?.pattern || '暂无分析'}
+                                                  </CardTitle>
+                                                </CardHeader>
+                                              </Card>
 
-                      <Card className="surface-card border-t-[3px] border-t-amber-500 border-border/70 bg-amber-500/[0.02] shadow-2xs">
-                        <CardHeader className="pb-2.5 pt-3.5">
-                          <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                            时态解析 · Tense
-                          </CardDescription>
-                          <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
-                            {analysis.sentenceAnatomy?.tense || '暂无分析'}
-                          </CardTitle>
-                        </CardHeader>
-                      </Card>
+                                              <Card className="surface-card border-t-[3px] border-t-amber-500 border-border/70 bg-amber-500/[0.02] shadow-2xs">
+                                                <CardHeader className="pb-2.5 pt-3.5">
+                                                  <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                                                    时态解析 · Tense
+                                                  </CardDescription>
+                                                  <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
+                                                    {analysis.sentenceAnatomy?.tense || '暂无分析'}
+                                                  </CardTitle>
+                                                </CardHeader>
+                                              </Card>
 
-                      <Card className="surface-card border-t-[3px] border-t-emerald-500 border-border/70 bg-emerald-500/[0.02] shadow-2xs">
-                        <CardHeader className="pb-2.5 pt-3.5">
-                          <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                            语态解析 · Voice
-                          </CardDescription>
-                          <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
-                            {analysis.sentenceAnatomy?.voice || '暂无分析'}
-                          </CardTitle>
-                        </CardHeader>
-                      </Card>
-                    </div>
+                                              <Card className="surface-card border-t-[3px] border-t-emerald-500 border-border/70 bg-emerald-500/[0.02] shadow-2xs">
+                                                <CardHeader className="pb-2.5 pt-3.5">
+                                                  <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                                    语态解析 · Voice
+                                                  </CardDescription>
+                                                  <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
+                                                    {analysis.sentenceAnatomy?.voice || '暂无分析'}
+                                                  </CardTitle>
+                                                </CardHeader>
+                                              </Card>
+                                            </div>
 
-                    {analysis.sentenceAnatomy?.constituents &&
-                      analysis.sentenceAnatomy.constituents.length > 0 && (
-                        <Card className="surface-card border-border/70 shadow-2xs">
-                          <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5">
-                                <Layers className="h-3.5 w-3.5 text-primary" />
-                                <CardTitle className="text-sm font-semibold">
-                                  句子组成成分分色拆解 · Sentence Constituents
-                                </CardTitle>
-                              </div>
-                              <span className="text-[11px] text-muted-foreground">
-                                不同语法角色采用独立色系标注
-                              </span>
-                            </div>
-                          </CardHeader>
-                          <CardContent className={`grid gap-3 ${constituentGridClass}`}>
-                            {analysis.sentenceAnatomy.constituents.map((c, idx) => {
-                              const cTheme = getConstituentTheme(c.role, idx);
-                              return (
-                                <div
-                                  key={idx}
-                                  className={`rounded-xl border p-3.5 text-xs transition-all duration-200 ${cTheme.cardBorder} ${cTheme.cardBg}`}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span
-                                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-bold ${cTheme.badge}`}
-                                    >
-                                      <span className={`h-1.5 w-1.5 rounded-full ${cTheme.dot}`} />
-                                      {c.role}
-                                    </span>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                      onClick={() => speak(c.fragment)}
-                                      aria-label={`朗读片段 ${c.fragment}`}
-                                    >
-                                      <Volume2 className="h-3 w-3" />
-                                    </Button>
+                                            {analysis.sentenceAnatomy?.constituents &&
+                                              analysis.sentenceAnatomy.constituents.length > 0 && (
+                                                <Card className="surface-card border-border/70 shadow-2xs">
+                                                  <CardHeader className="pb-3">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                      <div className="flex items-center gap-1.5">
+                                                        <Layers className="h-3.5 w-3.5 text-primary" />
+                                                        <CardTitle className="text-sm font-semibold">
+                                                          句子组成成分分色拆解 · Sentence Constituents
+                                                        </CardTitle>
+                                                      </div>
+                                                      <span className="text-[11px] text-muted-foreground">
+                                                        不同语法角色采用独立色系标注
+                                                      </span>
+                                                    </div>
+                                                  </CardHeader>
+                                                  <CardContent className={`grid gap-3 ${constituentGridClass}`}>
+                                                    {analysis.sentenceAnatomy.constituents.map((c, idx) => {
+                                                      const cTheme = getConstituentTheme(c.role, idx);
+                                                      return (
+                                                        <div
+                                                          key={idx}
+                                                          className={`rounded-xl border p-3.5 text-xs transition-all duration-200 ${cTheme.cardBorder} ${cTheme.cardBg}`}
+                                                        >
+                                                          <div className="flex items-center justify-between gap-2">
+                                                            <span
+                                                              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-bold ${cTheme.badge}`}
+                                                            >
+                                                              <span className={`h-1.5 w-1.5 rounded-full ${cTheme.dot}`} />
+                                                              {c.role}
+                                                            </span>
+                                                            <Button
+                                                              variant="ghost"
+                                                              size="icon"
+                                                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                                              onClick={() => speak(c.fragment)}
+                                                              aria-label={`朗读片段 ${c.fragment}`}
+                                                            >
+                                                              <Volume2 className="h-3 w-3" />
+                                                            </Button>
+                                                          </div>
+                                                          <p className="mt-2 font-phonetic text-[13px] font-semibold text-foreground">
+                                                            {c.fragment}
+                                                          </p>
+                                                          <p className={`mt-2 pl-2.5 leading-relaxed text-foreground/80 ${cTheme.explanationBorder}`}>
+                                                            {c.explanation}
+                                                          </p>
+                                                        </div>
+                                                      );
+                                                    })}
+                                                  </CardContent>
+                                                </Card>
+                                              )}
+
+                                            <div className={`grid gap-4 ${grammarGridClass}`}>
+                                              {analysis.grammar?.map((g, idx) => (
+                                                <Card
+                                                  key={idx}
+                                                  className={`surface-card border-l-[3px] border-l-cyan-500 border-border/70 shadow-2xs ${grammarCount === 1 ? 'md:grid md:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)] md:items-start md:gap-6' : ''
+                                                    }`}
+                                                >
+                                                  <CardHeader className="pb-2">
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="rounded bg-cyan-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-cyan-700 dark:text-cyan-300">
+                                                        GRAMMAR 0{idx + 1}
+                                                      </span>
+                                                      <CardTitle className="text-sm font-semibold">{g.label}</CardTitle>
+                                                    </div>
+                                                  </CardHeader>
+                                                  <CardContent className={grammarCount === 1 ? 'md:pt-6' : undefined}>
+                                                    <p className="text-xs leading-relaxed text-foreground/85">
+                                                      {g.explanation}
+                                                    </p>
+                                                  </CardContent>
+                                                </Card>
+                                              ))}
+                                            </div>
+                                          </TabsContent>
+
+                                          {/* Tab 3: 段 (Discourse Logic, Cohesion & Upgraded Paragraph) */}
+                                          <TabsContent value="discourse" className="mt-4 space-y-4">
+                                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                              <Card className="surface-card border-t-[3px] border-t-sky-500 border-border/70 shadow-2xs">
+                                                <CardHeader className="pb-2">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <GitBranch className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                                                    <CardTitle className="text-sm font-semibold">
+                                                      句群逻辑推进 · Discourse Logic
+                                                    </CardTitle>
+                                                  </div>
+                                                </CardHeader>
+                                                <CardContent>
+                                                  <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.05] p-3">
+                                                    <p className="text-xs font-medium leading-relaxed text-foreground">
+                                                      {analysis.discourse?.logic || '暂无分析'}
+                                                    </p>
+                                                  </div>
+                                                </CardContent>
+                                              </Card>
+
+                                              <Card className="surface-card border-t-[3px] border-t-violet-500 border-border/70 shadow-2xs">
+                                                <CardHeader className="pb-2">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <FileText className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                                                    <CardTitle className="text-sm font-semibold">
+                                                      中英思维与成段转换 · Cohesion
+                                                    </CardTitle>
+                                                  </div>
+                                                </CardHeader>
+                                                <CardContent>
+                                                  <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.05] p-3">
+                                                    <p className="text-xs leading-relaxed text-foreground/85">
+                                                      {analysis.discourse?.cohesion || '暂无分析'}
+                                                    </p>
+                                                  </div>
+                                                </CardContent>
+                                              </Card>
+                                            </div>
+
+                                            {analysis.notes && (
+                                              <Card className="surface-card border-l-[3px] border-l-amber-500 border-border/70 bg-amber-500/[0.03] shadow-2xs">
+                                                <CardHeader className="pb-1.5 pt-3.5">
+                                                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                                                    交流场景与语用提示 · Pragmatic Register
+                                                  </span>
+                                                </CardHeader>
+                                                <CardContent className="pb-3.5">
+                                                  <p className="text-xs leading-relaxed text-foreground/85">{analysis.notes}</p>
+                                                </CardContent>
+                                              </Card>
+                                            )}
+
+                                            {analysis.discourse?.upgradedParagraph && (
+                                              <Card className="surface-card border-t-[3px] border-t-emerald-500 border-border/70 shadow-2xs">
+                                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                                  <div>
+                                                    <CardTitle className="text-sm font-semibold">
+                                                      扩展练习 · Extended Paragraph
+                                                    </CardTitle>
+                                                    <CardDescription className="text-xs">
+                                                      围绕原话题练习自然表达，可能引入假设情境；不是原文翻译。
+                                                    </CardDescription>
+                                                  </div>
+                                                  <div className="flex items-center gap-1.5">
+                                                    <Button
+                                                      variant="outline"
+                                                      size="sm"
+                                                      className="h-7 gap-1 text-xs"
+                                                      onClick={() => speak(analysis.discourse?.upgradedParagraph)}
+                                                    >
+                                                      <Volume2 className="h-3 w-3" />
+                                                      Listen
+                                                    </Button>
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      className="h-7 gap-1 text-xs"
+                                                      onClick={() => copyTranslation(analysis.discourse?.upgradedParagraph)}
+                                                    >
+                                                      <Copy className="h-3 w-3" />
+                                                      Copy
+                                                    </Button>
+                                                  </div>
+                                                </CardHeader>
+                                                <CardContent className="space-y-3 pt-2">
+                                                  <p className="font-editorial text-[15px] font-medium leading-relaxed text-foreground">
+                                                    {analysis.discourse.upgradedParagraph}
+                                                  </p>
+                                                  {analysis.discourse.upgradedChinese && (
+                                                    <div className="rounded-r-lg border-l-[3px] border-emerald-500/60 bg-emerald-500/[0.06] px-3 py-2">
+                                                      <p className="text-xs leading-relaxed text-foreground/85">
+                                                        {analysis.discourse.upgradedChinese}
+                                                      </p>
+                                                    </div>
+                                                  )}
+                                                </CardContent>
+                                              </Card>
+                                            )}
+                                          </TabsContent>
+
+                                          {/* Tab 4: Practice Examples */}
+                                          <TabsContent value="examples" className="mt-4">
+                                            <div className={`grid gap-4 ${exampleGridClass}`}>
+                                              {analysis.examples?.map((ex, idx) => (
+                                                <Card
+                                                  key={idx}
+                                                  className={`surface-card border-border/70 shadow-2xs ${exampleCount === 1 ? 'md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:items-start md:gap-6' : ''
+                                                    }`}
+                                                >
+                                                  <CardHeader className="pb-2">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                      <div className="space-y-1.5">
+                                                        <span className="inline-block rounded bg-teal-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                                                          EXAMPLE 0{idx + 1}
+                                                        </span>
+                                                        <CardTitle className="font-editorial text-[15px] font-semibold leading-snug text-foreground">
+                                                          {ex.english}
+                                                        </CardTitle>
+                                                      </div>
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary"
+                                                        aria-label={`朗读例句 ${ex.english}`}
+                                                        onClick={() => speak(ex.english)}
+                                                      >
+                                                        <Volume2 className="h-3.5 w-3.5" />
+                                                      </Button>
+                                                    </div>
+                                                  </CardHeader>
+                                                  <CardContent className={exampleCount === 1 ? 'md:pt-6' : undefined}>
+                                                    <p className="rounded-r-md border-l-2 border-teal-500/50 bg-teal-500/[0.05] pl-2.5 py-1 text-xs leading-relaxed text-foreground/85">
+                                                      {ex.chinese}
+                                                    </p>
+                                                    <div className="mt-2 space-y-1">
+                                                      {ex.note && <p className="text-pretty text-xs leading-relaxed text-muted-foreground">{ex.note}</p>}
+                                                      <ExampleAttribution example={ex} />
+                                                    </div>
+                                                  </CardContent>
+                                                </Card>
+                                              ))}
+                                            </div>
+                                          </TabsContent>
+                                        </Tabs>
+                                      )}
                                   </div>
-                                  <p className="mt-2 font-phonetic text-[13px] font-semibold text-foreground">
-                                    {c.fragment}
-                                  </p>
-                                  <p className={`mt-2 pl-2.5 leading-relaxed text-foreground/80 ${cTheme.explanationBorder}`}>
-                                    {c.explanation}
-                                  </p>
+                                ) : (
+                                <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+                                    <BookOpen className="h-5 w-5 text-muted-foreground" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <h2 className="text-base font-semibold">{needsModelSetup ? '先接入文本模型' : search.trim() ? '没有匹配的提示' : '还没有提示'}</h2>
+                                    <p className="max-w-sm text-xs text-muted-foreground">
+                                      {needsModelSetup
+                                        ? '接入并启用带有 API Key 的文本模型后，即可生成学习内容。已采集的提示会保留在队列中，接入后自动处理。'
+                                        : search.trim() ? '请尝试其他关键词，或清空搜索查看历史提示。' : '从编码助手提交提示，系统会在后台自动生成学习内容。'}
+                                    </p>
+                                  </div>
+                                  {needsModelSetup && (
+                                    <Button size="sm" className="mt-2 gap-1.5 text-xs" disabled={busy} onClick={openSettings}>
+                                      接入模型
+                                    </Button>
+                                  )}
                                 </div>
-                              );
-                            })}
-                          </CardContent>
-                        </Card>
-                      )}
+                                )
+                                ) : (
+                                /* Lexicon / Knowledge Base View */
+                                <div className="animate-stage-in mx-auto w-full max-w-[1600px] space-y-6 px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <h1 className="text-xl font-semibold tracking-tight">Personal Lexicon</h1>
+                                      <p className="text-xs text-muted-foreground">
+                                        Saved terms and structural patterns from your past coding sessions.
+                                      </p>
+                                    </div>
+                                    <Badge variant="outline">{filteredKnowledge.length} items</Badge>
+                                  </div>
 
-                    <div className={`grid gap-4 ${grammarGridClass}`}>
-                      {analysis.grammar?.map((g, idx) => (
-                        <Card
-                          key={idx}
-                          className={`surface-card border-l-[3px] border-l-cyan-500 border-border/70 shadow-2xs ${
-                            grammarCount === 1 ? 'md:grid md:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)] md:items-start md:gap-6' : ''
-                          }`}
-                        >
-                          <CardHeader className="pb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="rounded bg-cyan-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-cyan-700 dark:text-cyan-300">
-                                GRAMMAR 0{idx + 1}
-                              </span>
-                              <CardTitle className="text-sm font-semibold">{g.label}</CardTitle>
-                            </div>
-                          </CardHeader>
-                          <CardContent className={grammarCount === 1 ? 'md:pt-6' : undefined}>
-                            <p className="text-xs leading-relaxed text-foreground/85">
-                              {g.explanation}
-                            </p>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </TabsContent>
-
-                  {/* Tab 3: 段 (Discourse Logic, Cohesion & Upgraded Paragraph) */}
-                  <TabsContent value="discourse" className="mt-4 space-y-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <Card className="surface-card border-t-[3px] border-t-sky-500 border-border/70 shadow-2xs">
-                        <CardHeader className="pb-2">
-                          <div className="flex items-center gap-1.5">
-                            <GitBranch className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
-                            <CardTitle className="text-sm font-semibold">
-                              句群逻辑推进 · Discourse Logic
-                            </CardTitle>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.05] p-3">
-                            <p className="text-xs font-medium leading-relaxed text-foreground">
-                              {analysis.discourse?.logic || '暂无分析'}
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="surface-card border-t-[3px] border-t-violet-500 border-border/70 shadow-2xs">
-                        <CardHeader className="pb-2">
-                          <div className="flex items-center gap-1.5">
-                            <FileText className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-                            <CardTitle className="text-sm font-semibold">
-                              中英思维与成段转换 · Cohesion
-                            </CardTitle>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.05] p-3">
-                            <p className="text-xs leading-relaxed text-foreground/85">
-                              {analysis.discourse?.cohesion || '暂无分析'}
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-
-                    {analysis.notes && (
-                      <Card className="surface-card border-l-[3px] border-l-amber-500 border-border/70 bg-amber-500/[0.03] shadow-2xs">
-                        <CardHeader className="pb-1.5 pt-3.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                            交流场景与语用提示 · Pragmatic Register
-                          </span>
-                        </CardHeader>
-                        <CardContent className="pb-3.5">
-                          <p className="text-xs leading-relaxed text-foreground/85">{analysis.notes}</p>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {analysis.discourse?.upgradedParagraph && (
-                      <Card className="surface-card border-t-[3px] border-t-emerald-500 border-border/70 shadow-2xs">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                          <div>
-                            <CardTitle className="text-sm font-semibold">
-                              扩展练习 · Extended Paragraph
-                            </CardTitle>
-                            <CardDescription className="text-xs">
-                              围绕原话题练习自然表达，可能引入假设情境；不是原文翻译。
-                            </CardDescription>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 gap-1 text-xs"
-                              onClick={() => speak(analysis.discourse?.upgradedParagraph)}
-                            >
-                              <Volume2 className="h-3 w-3" />
-                              Listen
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 text-xs"
-                              onClick={() => copyTranslation(analysis.discourse?.upgradedParagraph)}
-                            >
-                              <Copy className="h-3 w-3" />
-                              Copy
-                            </Button>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3 pt-2">
-                          <p className="font-editorial text-[15px] font-medium leading-relaxed text-foreground">
-                            {analysis.discourse.upgradedParagraph}
-                          </p>
-                          {analysis.discourse.upgradedChinese && (
-                            <div className="rounded-r-lg border-l-[3px] border-emerald-500/60 bg-emerald-500/[0.06] px-3 py-2">
-                              <p className="text-xs leading-relaxed text-foreground/85">
-                                {analysis.discourse.upgradedChinese}
-                              </p>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
-                  </TabsContent>
-
-                  {/* Tab 4: Practice Examples */}
-                  <TabsContent value="examples" className="mt-4">
-                    <div className={`grid gap-4 ${exampleGridClass}`}>
-                      {analysis.examples?.map((ex, idx) => (
-                        <Card
-                          key={idx}
-                          className={`surface-card border-border/70 shadow-2xs ${
-                            exampleCount === 1 ? 'md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:items-start md:gap-6' : ''
-                          }`}
-                        >
-                          <CardHeader className="pb-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="space-y-1.5">
-                                <span className="inline-block rounded bg-teal-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-teal-700 dark:text-teal-300">
-                                  EXAMPLE 0{idx + 1}
-                                </span>
-                                <CardTitle className="font-editorial text-[15px] font-semibold leading-snug text-foreground">
-                                  {ex.english}
-                                </CardTitle>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary"
-                                aria-label={`朗读例句 ${ex.english}`}
-                                onClick={() => speak(ex.english)}
-                              >
-                                <Volume2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </CardHeader>
-                          <CardContent className={exampleCount === 1 ? 'md:pt-6' : undefined}>
-                            <p className="rounded-r-md border-l-2 border-teal-500/50 bg-teal-500/[0.05] pl-2.5 py-1 text-xs leading-relaxed text-foreground/85">
-                              {ex.chinese}
-                            </p>
-                            <div className="mt-2 space-y-1">
-                              {ex.note && <p className="text-pretty text-xs leading-relaxed text-muted-foreground">{ex.note}</p>}
-                              <ExampleAttribution example={ex} />
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              )}
-            </div>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-                <BookOpen className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <div className="space-y-1">
-                <h2 className="text-base font-semibold">{needsModelSetup ? '先接入文本模型' : search.trim() ? '没有匹配的提示' : '还没有提示'}</h2>
-                <p className="max-w-sm text-xs text-muted-foreground">
-                  {needsModelSetup
-                    ? '接入并启用带有 API Key 的文本模型后，即可生成学习内容。已采集的提示会保留在队列中，接入后自动处理。'
-                    : search.trim() ? '请尝试其他关键词，或清空搜索查看历史提示。' : '从编码助手提交提示，系统会在后台自动生成学习内容。'}
-                </p>
-              </div>
-              {needsModelSetup && (
-                <Button size="sm" className="mt-2 gap-1.5 text-xs" disabled={busy} onClick={openSettings}>
-                  接入模型
-                </Button>
-              )}
-            </div>
-          )
-        ) : (
-          /* Lexicon / Knowledge Base View */
-          <div className="animate-stage-in mx-auto w-full max-w-[1600px] space-y-6 px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight">Personal Lexicon</h1>
-                <p className="text-xs text-muted-foreground">
-                  Saved terms and structural patterns from your past coding sessions.
-                </p>
-              </div>
-              <Badge variant="outline">{filteredKnowledge.length} items</Badge>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {filteredKnowledge.map((item) => {
-                const isVocab = item.category === 'vocabulary';
-                return (
-                  <Card
-                    key={item.id}
-                    className={`surface-card border-t-[3px] border-border/70 shadow-2xs ${
-                      isVocab ? 'border-t-indigo-500' : 'border-t-violet-500'
-                    }`}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold capitalize ${
-                            isVocab
-                              ? 'border-indigo-500/25 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
-                              : 'border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-300'
-                          }`}
-                        >
-                          {item.category}
-                        </span>
-                        <span className="font-phonetic text-[11px] text-muted-foreground">
-                          {item.encounters}× seen
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between pt-2">
-                        <CardTitle className="font-editorial text-base font-bold">{item.term}</CardTitle>
-                        {isVocab && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            aria-label={`朗读 ${item.term}`}
-                            onClick={() => speak(item.term)}
-                          >
-                            <Volume2 className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p
-                        className={`rounded-r-md border-l-2 pl-2.5 py-1 text-xs leading-relaxed text-foreground/85 ${
-                          isVocab
-                            ? 'border-indigo-500/50 bg-indigo-500/[0.04]'
-                            : 'border-violet-500/50 bg-violet-500/[0.04]'
-                        }`}
-                      >
-                        {item.meaning}
-                      </p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
+                                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                                    {filteredKnowledge.map((item) => {
+                                      const isVocab = item.category === 'vocabulary';
+                                      return (
+                                        <Card
+                                          key={item.id}
+                                          className={`surface-card border-t-[3px] border-border/70 shadow-2xs ${isVocab ? 'border-t-indigo-500' : 'border-t-violet-500'
+                                            }`}
+                                        >
+                                          <CardHeader className="pb-2">
+                                            <div className="flex items-center justify-between">
+                                              <span
+                                                className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold capitalize ${isVocab
+                                                    ? 'border-indigo-500/25 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
+                                                    : 'border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+                                                  }`}
+                                              >
+                                                {item.category}
+                                              </span>
+                                              <span className="font-phonetic text-[11px] text-muted-foreground">
+                                                {item.encounters}× seen
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center justify-between pt-2">
+                                              <CardTitle className="font-editorial text-base font-bold">{item.term}</CardTitle>
+                                              {isVocab && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="icon"
+                                                  className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                                  aria-label={`朗读 ${item.term}`}
+                                                  onClick={() => speak(item.term)}
+                                                >
+                                                  <Volume2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </CardHeader>
+                                          <CardContent>
+                                            <p
+                                              className={`rounded-r-md border-l-2 pl-2.5 py-1 text-xs leading-relaxed text-foreground/85 ${isVocab
+                                                  ? 'border-indigo-500/50 bg-indigo-500/[0.04]'
+                                                  : 'border-violet-500/50 bg-violet-500/[0.04]'
+                                                }`}
+                                            >
+                                              {item.meaning}
+                                            </p>
+                                          </CardContent>
+                                        </Card>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
         )}
-      </main>
+                              </main>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!busy && !open) setDeleteTarget(null); }}>
-        <AlertDialogContent aria-busy={busy}>
-          <AlertDialogTitle className="text-base font-semibold text-balance">删除提示卡片？</AlertDialogTitle>
-          <AlertDialogDescription className="text-sm text-muted-foreground text-pretty">默认只删除此卡片，保留已积累的词汇与语法。此操作不可撤销。</AlertDialogDescription>
-          <StyledCheckbox checked={purgeKnowledge} disabled={busy} onChange={setPurgeKnowledge}>
-            同时删除此提示关联的派生知识（其他提示共享或此前明确保留的知识仍会保留）
-          </StyledCheckbox>
-          {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
-          <div className="flex justify-end gap-2"><AlertDialogCancel asChild><Button variant="outline" disabled={busy}>取消</Button></AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={() => deleteTarget && handleDelete(deleteTarget)}>{busy ? '删除中…' : purgeKnowledge ? '删除卡片及关联知识' : '只删除卡片'}</Button></div>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={!!modelDeleteTarget} onOpenChange={(open) => { if (!busy && !open) setModelDeleteTarget(null); }}>
-        <AlertDialogContent aria-busy={busy}>
-          <AlertDialogTitle className="text-base font-semibold text-balance">移除此模型配置？</AlertDialogTitle>
-          <AlertDialogDescription className="text-sm text-muted-foreground text-pretty">将此模型从设置草稿中移除。只有点击设置底部「确定」才会删除配置与密钥，点击「取消」可保留原配置。</AlertDialogDescription>
-          {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
-          <div className="flex justify-end gap-2"><AlertDialogCancel asChild><Button variant="outline" disabled={busy}>取消</Button></AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={() => modelDeleteTarget && handleDeleteModel(modelDeleteTarget)}>移出草稿</Button></div>
-        </AlertDialogContent>
-      </AlertDialog>
-      {/* Settings Dialog: Enhanced with Multi-Model Configuration */}
-      <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings(); }}>
-        <DialogContent
-          onPointerDownOutside={(event) => {
-            const target = event.target as HTMLElement | null;
-            if (target?.closest('[data-sidecar-select-content]')) event.preventDefault();
-          }}
-          onFocusOutside={(event) => {
-            const target = event.target as HTMLElement | null;
-            if (target?.closest('[data-sidecar-select-content]')) event.preventDefault();
-          }}
-          onEscapeKeyDown={(event) => {
-            // Let an open Select consume the first Escape before closing the dialog.
-            if (document.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
-          }}
-          aria-busy={busy} className="sm:max-w-xl max-h-[88dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle className="text-base font-semibold">Preferences</DialogTitle>
-            <DialogDescription className="text-xs">
-              配置采集范围、文本模型与语音模型。所有修改在点击底部「确定」后生效。
-            </DialogDescription>
-          </DialogHeader>
+                              <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!busy && !open) setDeleteTarget(null); }}>
+                                <AlertDialogContent aria-busy={busy}>
+                                  <AlertDialogTitle className="text-base font-semibold text-balance">删除提示卡片？</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-sm text-muted-foreground text-pretty">默认只删除此卡片，保留已积累的词汇与语法。此操作不可撤销。</AlertDialogDescription>
+                                  <StyledCheckbox checked={purgeKnowledge} disabled={busy} onChange={setPurgeKnowledge}>
+                                    同时删除此提示关联的派生知识（其他提示共享或此前明确保留的知识仍会保留）
+                                  </StyledCheckbox>
+                                  {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
+                                  <div className="flex justify-end gap-2"><AlertDialogCancel asChild><Button variant="outline" disabled={busy}>取消</Button></AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={() => deleteTarget && handleDelete(deleteTarget)}>{busy ? '删除中…' : purgeKnowledge ? '删除卡片及关联知识' : '只删除卡片'}</Button></div>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                              <AlertDialog open={!!modelDeleteTarget} onOpenChange={(open) => { if (!busy && !open) setModelDeleteTarget(null); }}>
+                                <AlertDialogContent aria-busy={busy}>
+                                  <AlertDialogTitle className="text-base font-semibold text-balance">移除此模型配置？</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-sm text-muted-foreground text-pretty">将此模型从设置草稿中移除。只有点击设置底部「确定」才会删除配置与密钥，点击「取消」可保留原配置。</AlertDialogDescription>
+                                  {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
+                                  <div className="flex justify-end gap-2"><AlertDialogCancel asChild><Button variant="outline" disabled={busy}>取消</Button></AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={() => modelDeleteTarget && handleDeleteModel(modelDeleteTarget)}>移出草稿</Button></div>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                              {/* Settings Dialog: Enhanced with Multi-Model Configuration */}
+                              <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) closeSettings(); }}>
+                                <DialogContent
+                                  onPointerDownOutside={(event) => {
+                                    const target = event.target as HTMLElement | null;
+                                    if (target?.closest('[data-sidecar-select-content]')) event.preventDefault();
+                                  }}
+                                  onFocusOutside={(event) => {
+                                    const target = event.target as HTMLElement | null;
+                                    if (target?.closest('[data-sidecar-select-content]')) event.preventDefault();
+                                  }}
+                                  onEscapeKeyDown={(event) => {
+                                    // Let an open Select consume the first Escape before closing the dialog.
+                                    if (document.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
+                                  }}
+                                  aria-busy={busy} className="sm:max-w-xl max-h-[88dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
+                                  <DialogHeader>
+                                    <DialogTitle className="text-base font-semibold">Preferences</DialogTitle>
+                                    <DialogDescription className="text-xs">
+                                      配置采集范围、文本模型与语音模型。所有修改在点击底部「确定」后生效。
+                                    </DialogDescription>
+                                  </DialogHeader>
 
-          <div className="min-h-0 space-y-5 overflow-y-auto py-2 pr-1">
-            {/* Capture Toggle */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <div className="text-sm font-medium">Capture New Prompts</div>
-                <div className="text-xs text-muted-foreground">
-                  Listen to local coding agent hooks in the background.
-                </div>
-              </div>
-              <Switch
-                disabled={busy || !status}
-                checked={!pausedDraft}
-                onCheckedChange={(checked) => setPausedDraft(!checked)}
-                aria-label="Capture new prompts"
-              />
-            </div>
+                                  <div className="min-h-0 space-y-5 overflow-y-auto py-2 pr-1">
+                                    {/* Capture Toggle */}
+                                    <div className="flex items-center justify-between gap-4">
+                                      <div className="space-y-0.5">
+                                        <div className="text-sm font-medium">Capture New Prompts</div>
+                                        <div className="text-xs text-muted-foreground">
+                                          Listen to local coding agent hooks in the background.
+                                        </div>
+                                      </div>
+                                      <Switch
+                                        disabled={busy || !status}
+                                        checked={!pausedDraft}
+                                        onCheckedChange={(checked) => setPausedDraft(!checked)}
+                                        aria-label="Capture new prompts"
+                                      />
+                                    </div>
 
-            <Separator />
+                                    <Separator />
 
-            <div className="space-y-3 text-xs">
-              {captureDraft && <>
-                <label htmlFor="capture-policy" className="block font-medium">项目采集范围</label>
-                <Select
-                  id="capture-policy"
-                  aria-describedby="project-path-hint"
-                  value={captureDraft.mode}
-                  disabled={busy}
-                  onValueChange={(mode) => setCaptureDraft({ ...captureDraft, mode: mode as 'all' | 'allowlist' })}
-                  options={[
-                    { value: 'all', label: '所有项目', description: '自动采集，排除名单中的目录除外' },
-                    { value: 'allowlist', label: '仅允许名单', description: '只采集“允许的项目目录”中的内容' },
-                  ]}
-                />
-                <p id="project-path-hint" className="text-muted-foreground">项目须填写本地绝对目录，每行一个。排除名单优先；仅允许名单模式会拒绝未知项目。</p>
-                <label htmlFor="allowed-projects" className="block font-medium">允许的项目目录</label>
-                <textarea id="allowed-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.allowedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, allowedProjects: e.target.value.split('\n') })} className="ui-textarea" />
-                <label htmlFor="excluded-projects" className="block font-medium">排除的项目目录</label>
-                <textarea id="excluded-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.excludedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, excludedProjects: e.target.value.split('\n') })} className="ui-textarea" />
-              </>}
-            </div>
-            <Separator />
-            {/* Model Engine Display */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <div className="text-sm font-medium">Model Engine</div>
-                <div className="text-xs text-muted-foreground">
-                  {activeTextModel ? `${activeTextModel.name} (${activeTextModel.model})` : '尚未接入文本模型'}
-                </div>
-              </div>
-              <Badge variant={status?.mode === 'live' ? 'default' : 'secondary'}>
-                {status?.mode === 'live' ? 'LIVE' : '未配置'}
-              </Badge>
-            </div>
+                                    <div className="space-y-3 text-xs">
+                                      {captureDraft && <>
+                                        <label htmlFor="capture-policy" className="block font-medium">项目采集范围</label>
+                                        <Select
+                                          id="capture-policy"
+                                          aria-describedby="project-path-hint"
+                                          value={captureDraft.mode}
+                                          disabled={busy}
+                                          onValueChange={(mode) => setCaptureDraft({ ...captureDraft, mode: mode as 'all' | 'allowlist' })}
+                                          options={[
+                                            { value: 'all', label: '所有项目', description: '自动采集，排除名单中的目录除外' },
+                                            { value: 'allowlist', label: '仅允许名单', description: '只采集“允许的项目目录”中的内容' },
+                                          ]}
+                                        />
+                                        <p id="project-path-hint" className="text-muted-foreground">项目须填写本地绝对目录，每行一个。排除名单优先；仅允许名单模式会拒绝未知项目。</p>
+                                        <label htmlFor="allowed-projects" className="block font-medium">允许的项目目录</label>
+                                        <textarea id="allowed-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.allowedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, allowedProjects: e.target.value.split('\n') })} className="ui-textarea" />
+                                        <label htmlFor="excluded-projects" className="block font-medium">排除的项目目录</label>
+                                        <textarea id="excluded-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.excludedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, excludedProjects: e.target.value.split('\n') })} className="ui-textarea" />
+                                      </>}
+                                    </div>
+                                    <Separator />
+                                    {/* Model Engine Display */}
+                                    <div className="flex items-center justify-between">
+                                      <div className="space-y-0.5">
+                                        <div className="text-sm font-medium">Model Engine</div>
+                                        <div className="text-xs text-muted-foreground">
+                                          {activeTextModel ? `${activeTextModel.name} (${activeTextModel.model})` : '尚未接入文本模型'}
+                                        </div>
+                                      </div>
+                                      <Badge variant={status?.mode === 'live' ? 'default' : 'secondary'}>
+                                        {status?.mode === 'live' ? 'LIVE' : '未配置'}
+                                      </Badge>
+                                    </div>
 
-            <Separator />
+                                    <Separator />
 
-            {/* Multi-Model Configurations */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Model Configurations</div>
-              </div>
-              <p className="text-xs text-muted-foreground">学习内容仅由已启用的真实文本模型生成。未配置 API Key 时不会生成内容，提示会保持排队；补充密钥并启用模型后自动处理。</p>
+                                    {/* Multi-Model Configurations */}
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <div className="text-sm font-medium">Model Configurations</div>
+                                      </div>
+                                      <p className="text-xs text-muted-foreground">学习内容仅由已启用的真实文本模型生成。未配置 API Key 时不会生成内容，提示会保持排队；补充密钥并启用模型后自动处理。</p>
 
-              <Tabs
-                value={settingsTab}
-                onValueChange={(v) => {
-                  if (!handleSaveModel()) return;
-                  setSettingsTab(v as 'text' | 'speech');
-                  setEditingModel(null);
-                  setFormError(null);
-                }}
-                className="w-full"
-              >
-                <div className="flex items-center justify-between pb-2">
-                  <TabsList className="grid h-8 grid-cols-2 w-48">
-                    <TabsTrigger value="text" className="text-xs">
-                      Text Models ({modelDraft.models.filter((m) => m.kind === 'text').length})
-                    </TabsTrigger>
-                    <TabsTrigger value="speech" className="text-xs">
-                      TTS Models ({modelDraft.models.filter((m) => m.kind === 'speech').length})
-                    </TabsTrigger>
-                  </TabsList>
+                                      <Tabs
+                                        value={settingsTab}
+                                        onValueChange={(v) => {
+                                          if (!handleSaveModel()) return;
+                                          setSettingsTab(v as 'text' | 'speech');
+                                          setEditingModel(null);
+                                          setFormError(null);
+                                        }}
+                                        className="w-full"
+                                      >
+                                        <div className="flex items-center justify-between pb-2">
+                                          <TabsList className="grid h-8 grid-cols-2 w-48">
+                                            <TabsTrigger value="text" className="text-xs">
+                                              Text Models ({modelDraft.models.filter((m) => m.kind === 'text').length})
+                                            </TabsTrigger>
+                                            <TabsTrigger value="speech" className="text-xs">
+                                              TTS Models ({modelDraft.models.filter((m) => m.kind === 'speech').length})
+                                            </TabsTrigger>
+                                          </TabsList>
 
-                  {!editingModel && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 gap-1 px-2.5 text-xs"
-                      disabled={busy} onClick={() => handleOpenNewModel(settingsTab)}
-                    >
-                      <Plus className="h-3 w-3" />
-                      Add {settingsTab === 'text' ? 'Text' : 'TTS'} Model
-                    </Button>
-                  )}
-                </div>
+                                          {!editingModel && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="h-7 gap-1 px-2.5 text-xs"
+                                              disabled={busy} onClick={() => handleOpenNewModel(settingsTab)}
+                                            >
+                                              <Plus className="h-3 w-3" />
+                                              Add {settingsTab === 'text' ? 'Text' : 'TTS'} Model
+                                            </Button>
+                                          )}
+                                        </div>
 
-                {/* Inline Model Edit/Add Form */}
-                {editingModel && (
-                  <div className="my-3 rounded-lg border bg-muted/30 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold">
-                        {editingModel.id ? 'Edit Model' : `New ${editingModel.kind.toUpperCase()} Model`}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5 text-xs text-muted-foreground"
-                        disabled={busy} onClick={() => setEditingModel(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
+                                        {/* Inline Model Edit/Add Form */}
+                                        {editingModel && (
+                                          <div className="my-3 rounded-lg border bg-muted/30 p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs font-semibold">
+                                                {editingModel.id ? 'Edit Model' : `New ${editingModel.kind.toUpperCase()} Model`}
+                                              </span>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 px-1.5 text-xs text-muted-foreground"
+                                                disabled={busy} onClick={() => setEditingModel(null)}
+                                              >
+                                                Cancel
+                                              </Button>
+                                            </div>
 
-                    {formError && (
-                      <div id="model-form-error" role="alert" className="rounded-md bg-destructive/15 p-2 text-xs text-destructive">
-                        {formError}
-                      </div>
-                    )}
+                                            {formError && (
+                                              <div id="model-form-error" role="alert" className="rounded-md bg-destructive/15 p-2 text-xs text-destructive">
+                                                {formError}
+                                              </div>
+                                            )}
 
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs">
-                      <div className="space-y-1">
-                        <label htmlFor="model-name" className="font-medium text-muted-foreground">Display Name</label>
-                        <Input disabled={busy} id="model-name" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
-                          value={editingModel.name}
-                          onChange={(e) => setEditingModel({ ...editingModel, name: e.target.value })}
-                          placeholder={editingModel.kind === 'text' ? 'e.g. OpenAI GPT-4o' : 'e.g. OpenAI Voice'}
-                          className="h-8 text-xs"
-                        />
-                      </div>
+                                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 text-xs">
+                                              <div className="space-y-1">
+                                                <label htmlFor="model-name" className="font-medium text-muted-foreground">Display Name</label>
+                                                <Input disabled={busy} id="model-name" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
+                                                  value={editingModel.name}
+                                                  onChange={(e) => setEditingModel({ ...editingModel, name: e.target.value })}
+                                                  placeholder={editingModel.kind === 'text' ? 'e.g. OpenAI GPT-4o' : 'e.g. OpenAI Voice'}
+                                                  className="h-8 text-xs"
+                                                />
+                                              </div>
 
-                      <div className="space-y-1">
-                        <label htmlFor="model-id" className="font-medium text-muted-foreground">Model Identifier</label>
-                        <Input disabled={busy} id="model-id" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
-                          value={editingModel.model}
-                          onChange={(e) => setEditingModel({ ...editingModel, model: e.target.value })}
-                          placeholder={editingModel.kind === 'text' ? 'e.g. gpt-6-luna' : 'e.g. tts-1'}
-                          className="h-8 text-xs"
-                        />
-                      </div>
+                                              <div className="space-y-1">
+                                                <label htmlFor="model-id" className="font-medium text-muted-foreground">Model Identifier</label>
+                                                <Input disabled={busy} id="model-id" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
+                                                  value={editingModel.model}
+                                                  onChange={(e) => setEditingModel({ ...editingModel, model: e.target.value })}
+                                                  placeholder={editingModel.kind === 'text' ? 'e.g. gpt-6-luna' : 'e.g. tts-1'}
+                                                  className="h-8 text-xs"
+                                                />
+                                              </div>
 
-                      <div className="space-y-1 sm:col-span-2">
-                        <label htmlFor="model-base-url" className="font-medium text-muted-foreground">Base URL</label>
-                        <Input disabled={busy} id="model-base-url" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
-                          value={editingModel.baseUrl}
-                          onChange={(e) => setEditingModel({ ...editingModel, baseUrl: e.target.value })}
-                          placeholder="https://api.openai.com/v1"
-                          className="h-8 text-xs"
-                        />
-                        <span className="text-[10px] text-muted-foreground">
-                          Remote endpoints must use HTTPS. Local loopback allows HTTP.
-                        </span>
-                      </div>
+                                              <div className="space-y-1 sm:col-span-2">
+                                                <label htmlFor="model-base-url" className="font-medium text-muted-foreground">Base URL</label>
+                                                <Input disabled={busy} id="model-base-url" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
+                                                  value={editingModel.baseUrl}
+                                                  onChange={(e) => setEditingModel({ ...editingModel, baseUrl: e.target.value })}
+                                                  placeholder="https://api.openai.com/v1"
+                                                  className="h-8 text-xs"
+                                                />
+                                                <span className="text-[10px] text-muted-foreground">
+                                                  Remote endpoints must use HTTPS. Local loopback allows HTTP.
+                                                </span>
+                                              </div>
 
-                      <div className="space-y-1 sm:col-span-2">
-                        <label htmlFor="model-api-key" className="font-medium text-muted-foreground">API Key</label>
-                        <Input id="model-api-key" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
-                          type="password"
-                          value={editingModel.apiKey || ''}
-                          disabled={busy || editingModel.clearApiKey}
-                          onChange={(e) => setEditingModel({ ...editingModel, apiKey: e.target.value })}
-                          placeholder={
-                            editingModel.id
-                              ? '留空保留旧密钥；清除请勾选下方控件'
-                              : 'sk-...'
-                          }
-                          className="h-8 text-xs font-mono"
-                        />
-                        {editingModel.id && (
-                          <StyledCheckbox
-                            checked={!!editingModel.clearApiKey}
-                            disabled={busy}
-                            onChange={(checked) =>
-                              setEditingModel({ ...editingModel, clearApiKey: checked, apiKey: '' })
-                            }
-                          >
-                            清除已保存密钥（点击底部「确定」后生效）
-                          </StyledCheckbox>
-                        )}
-                        {editingModel.id && editingModel.baseUrl.trim().replace(/\/+$/, '') !== modelDraft.models.find((m) => m.id === editingModel.id)?.baseUrl.replace(/\/+$/, '') && <p id="provider-key-hint" className="text-xs text-muted-foreground">Provider Base URL 已更改，须重新输入密钥，或明确选择清除密钥。旧密钥不会发送给新 Provider。</p>}
-                        <span className="text-[10px] text-muted-foreground">
-                          密钥提交后保存在本地受限权限文件中；读取配置只返回掩码，不返回完整密钥。
-                        </span>
-                      </div>
+                                              <div className="space-y-1 sm:col-span-2">
+                                                <label htmlFor="model-api-key" className="font-medium text-muted-foreground">API Key</label>
+                                                <Input id="model-api-key" aria-invalid={!!formError} aria-describedby={formError ? 'model-form-error' : undefined}
+                                                  type="password"
+                                                  value={editingModel.apiKey || ''}
+                                                  disabled={busy || editingModel.clearApiKey}
+                                                  onChange={(e) => setEditingModel({ ...editingModel, apiKey: e.target.value })}
+                                                  placeholder={
+                                                    editingModel.id
+                                                      ? '留空保留旧密钥；清除请勾选下方控件'
+                                                      : 'sk-...'
+                                                  }
+                                                  className="h-8 text-xs font-mono"
+                                                />
+                                                {editingModel.id && (
+                                                  <StyledCheckbox
+                                                    checked={!!editingModel.clearApiKey}
+                                                    disabled={busy}
+                                                    onChange={(checked) =>
+                                                      setEditingModel({ ...editingModel, clearApiKey: checked, apiKey: '' })
+                                                    }
+                                                  >
+                                                    清除已保存密钥（点击底部「确定」后生效）
+                                                  </StyledCheckbox>
+                                                )}
+                                                {editingModel.id && editingModel.baseUrl.trim().replace(/\/+$/, '') !== modelDraft.models.find((m) => m.id === editingModel.id)?.baseUrl.replace(/\/+$/, '') && <p id="provider-key-hint" className="text-xs text-muted-foreground">Provider Base URL 已更改，须重新输入密钥，或明确选择清除密钥。旧密钥不会发送给新 Provider。</p>}
+                                                <span className="text-[10px] text-muted-foreground">
+                                                  密钥提交后保存在本地受限权限文件中；读取配置只返回掩码，不返回完整密钥。
+                                                </span>
+                                              </div>
 
-                      {editingModel.kind === 'speech' ? (
-                        <div className="space-y-1">
-                          <label htmlFor="model-voice" className="font-medium text-muted-foreground">Voice Name</label>
-                          <Input disabled={busy} id="model-voice"
-                            value={editingModel.voice || ''}
-                            onChange={(e) => setEditingModel({ ...editingModel, voice: e.target.value })}
-                            placeholder="marin (or alloy, echo, nova...)"
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <label htmlFor="model-temperature" className="font-medium text-muted-foreground">Temperature (Optional)</label>
-                          <Input disabled={busy} id="model-temperature"
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="2"
-                            value={editingModel.temperature ?? ''}
-                            onChange={(e) => setEditingModel({ ...editingModel, temperature: e.target.value })}
-                            placeholder="Leave blank for model default (null)"
-                            className="h-8 text-xs"
-                          />
-                          <span className="text-[10px] text-muted-foreground">
-                            Note: gpt-6-luna rejects custom temperature; leave empty.
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                                              {editingModel.kind === 'speech' ? (
+                                                <div className="space-y-1">
+                                                  <label htmlFor="model-voice" className="font-medium text-muted-foreground">Voice Name</label>
+                                                  <Input disabled={busy} id="model-voice"
+                                                    value={editingModel.voice || ''}
+                                                    onChange={(e) => setEditingModel({ ...editingModel, voice: e.target.value })}
+                                                    placeholder="marin (or alloy, echo, nova...)"
+                                                    className="h-8 text-xs"
+                                                  />
+                                                </div>
+                                              ) : (
+                                                <div className="space-y-1">
+                                                  <label htmlFor="model-temperature" className="font-medium text-muted-foreground">Temperature (Optional)</label>
+                                                  <Input disabled={busy} id="model-temperature"
+                                                    type="number"
+                                                    step="0.1"
+                                                    min="0"
+                                                    max="2"
+                                                    value={editingModel.temperature ?? ''}
+                                                    onChange={(e) => setEditingModel({ ...editingModel, temperature: e.target.value })}
+                                                    placeholder="Leave blank for model default (null)"
+                                                    className="h-8 text-xs"
+                                                  />
+                                                  <span className="text-[10px] text-muted-foreground">
+                                                    Note: gpt-6-luna rejects custom temperature; leave empty.
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
 
-                    <div className="flex justify-end gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs"
-                        disabled={busy} onClick={() => setEditingModel(null)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button size="sm" disabled={busy} className="h-7 text-xs" onClick={handleSaveModel}>
-                        完成编辑
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                                            <div className="flex justify-end gap-2 pt-1">
+                                              <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                className="h-7 text-xs"
+                                                disabled={busy} onClick={() => setEditingModel(null)}
+                                              >
+                                                Cancel
+                                              </Button>
+                                              <Button size="sm" disabled={busy} className="h-7 text-xs" onClick={handleSaveModel}>
+                                                完成编辑
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        )}
 
-                {/* Text Models Tab Content */}
-                <TabsContent value="text" className="mt-2 space-y-2">
-                  {modelDraft.models.filter((m) => m.kind === 'text').length === 0 ? (
-                    <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
-                      尚未配置文本模型。点击 Add Text Model 添加配置并填写 API Key，启用后会自动处理排队中的提示。
-                    </div>
-                  ) : (
-                    modelDraft.models
-                      .filter((m) => m.kind === 'text')
-                      .map((m) => {
-                        const isActive = m.id === modelDraft.activeTextId;
-                        return (
-                          <div
-                            key={m.id}
-                            className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-colors ${
-                              isActive ? 'border-primary/60 bg-accent/40 shadow-2xs' : 'border-border/70 hover:bg-muted/40'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2.5">
-                              <button
-                                type="button"
-                                disabled={busy || isActive}
-                                aria-label={`Activate ${m.name}`}
-                                onClick={() => handleSetActiveModel(m.id)}
-                                className="mt-0.5"
-                                title={isActive ? 'Currently active' : 'Click to activate'}
-                              >
-                                {isActive ? (
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                ) : (
-                                  <Radio className="h-4 w-4 text-muted-foreground/60 hover:text-foreground" />
-                                )}
-                              </button>
-                              <div className="space-y-0.5">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-foreground">{m.name}</span>
-                                  <span className="font-mono text-[11px] text-muted-foreground">
-                                    {m.model}
-                                  </span>
-                                  {isActive && (
-                                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                                      Active
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-                                  <span className="truncate max-w-[200px]">{m.baseUrl}</span>
-                                  <span>·</span>
-                                  <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : '未配置 API Key，不会生成内容'}</span>
-                                  {m.temperature !== null && m.temperature !== undefined && (
-                                    <>
-                                      <span>·</span>
-                                      <span>temp: {m.temperature}</span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
+                                        {/* Text Models Tab Content */}
+                                        <TabsContent value="text" className="mt-2 space-y-2">
+                                          {modelDraft.models.filter((m) => m.kind === 'text').length === 0 ? (
+                                            <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
+                                              尚未配置文本模型。点击 Add Text Model 添加配置并填写 API Key，启用后会自动处理排队中的提示。
+                                            </div>
+                                          ) : (
+                                            modelDraft.models
+                                              .filter((m) => m.kind === 'text')
+                                              .map((m) => {
+                                                const isActive = m.id === modelDraft.activeTextId;
+                                                return (
+                                                  <div
+                                                    key={m.id}
+                                                    className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-colors ${isActive ? 'border-primary/60 bg-accent/40 shadow-2xs' : 'border-border/70 hover:bg-muted/40'
+                                                      }`}
+                                                  >
+                                                    <div className="flex items-start gap-2.5">
+                                                      <button
+                                                        type="button"
+                                                        disabled={busy || isActive}
+                                                        aria-label={`Activate ${m.name}`}
+                                                        onClick={() => handleSetActiveModel(m.id)}
+                                                        className="mt-0.5"
+                                                        title={isActive ? 'Currently active' : 'Click to activate'}
+                                                      >
+                                                        {isActive ? (
+                                                          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                                        ) : (
+                                                          <Radio className="h-4 w-4 text-muted-foreground/60 hover:text-foreground" />
+                                                        )}
+                                                      </button>
+                                                      <div className="space-y-0.5">
+                                                        <div className="flex items-center gap-2">
+                                                          <span className="font-semibold text-foreground">{m.name}</span>
+                                                          <span className="font-mono text-[11px] text-muted-foreground">
+                                                            {m.model}
+                                                          </span>
+                                                          {isActive && (
+                                                            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                                                              Active
+                                                            </Badge>
+                                                          )}
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                                                          <span className="truncate max-w-[200px]">{m.baseUrl}</span>
+                                                          <span>·</span>
+                                                          <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : '未配置 API Key，不会生成内容'}</span>
+                                                          {m.temperature !== null && m.temperature !== undefined && (
+                                                            <>
+                                                              <span>·</span>
+                                                              <span>temp: {m.temperature}</span>
+                                                            </>
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1">
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-muted-foreground"
+                                                        disabled={busy}
+                                                        aria-label={`Edit ${m.name}`}
+                                                        onClick={() => handleOpenEditModel(m)}
+                                                        title="Edit"
+                                                      >
+                                                        <Edit2 className="h-3 w-3" />
+                                                      </Button>
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                        disabled={busy}
+                                                        aria-label={`Delete ${m.name}`}
+                                                        onClick={() => { setMutationError(null); setModelDeleteTarget(m.id); }}
+                                                        title="Delete"
+                                                      >
+                                                        <Trash2 className="h-3 w-3" />
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })
+                                          )}
+                                        </TabsContent>
+
+                                        {/* Speech (TTS) Models Tab Content */}
+                                        <TabsContent value="speech" className="mt-2 space-y-2">
+                                          {modelDraft.models.filter((m) => m.kind === 'speech').length === 0 ? (
+                                            <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
+                                              No TTS models configured. Listen uses local Browser voice by default.
+                                            </div>
+                                          ) : (
+                                            modelDraft.models
+                                              .filter((m) => m.kind === 'speech')
+                                              .map((m) => {
+                                                const isActive = m.id === modelDraft.activeSpeechId;
+                                                return (
+                                                  <div
+                                                    key={m.id}
+                                                    className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-colors ${isActive ? 'border-primary/60 bg-accent/40 shadow-2xs' : 'border-border/70 hover:bg-muted/40'
+                                                      }`}
+                                                  >
+                                                    <div className="flex items-start gap-2.5">
+                                                      <button
+                                                        type="button"
+                                                        disabled={busy || isActive}
+                                                        aria-label={`Activate ${m.name}`}
+                                                        onClick={() => handleSetActiveModel(m.id)}
+                                                        className="mt-0.5"
+                                                        title={isActive ? 'Currently active' : 'Click to activate'}
+                                                      >
+                                                        {isActive ? (
+                                                          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                                        ) : (
+                                                          <Radio className="h-4 w-4 text-muted-foreground/60 hover:text-foreground" />
+                                                        )}
+                                                      </button>
+                                                      <div className="space-y-0.5">
+                                                        <div className="flex items-center gap-2">
+                                                          <span className="font-semibold text-foreground">{m.name}</span>
+                                                          <span className="font-mono text-[11px] text-muted-foreground">
+                                                            {m.model}
+                                                          </span>
+                                                          <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
+                                                            Voice: {m.voice || 'marin'}
+                                                          </Badge>
+                                                          {isActive && (
+                                                            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                                                              Active
+                                                            </Badge>
+                                                          )}
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+                                                          <span className="truncate max-w-[200px]">{m.baseUrl}</span>
+                                                          <span>·</span>
+                                                          <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : 'No API key'}</span>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1">
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-muted-foreground"
+                                                        disabled={busy}
+                                                        aria-label={`Edit ${m.name}`}
+                                                        onClick={() => handleOpenEditModel(m)}
+                                                        title="Edit"
+                                                      >
+                                                        <Edit2 className="h-3 w-3" />
+                                                      </Button>
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                                        disabled={busy}
+                                                        aria-label={`Delete ${m.name}`}
+                                                        onClick={() => { setMutationError(null); setModelDeleteTarget(m.id); }}
+                                                        title="Delete"
+                                                      >
+                                                        <Trash2 className="h-3 w-3" />
+                                                      </Button>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })
+                                          )}
+                                        </TabsContent>
+                                      </Tabs>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-3 border-t pt-4">
+                                    {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
+                                    <div className="flex justify-end gap-2">
+                                      <Button variant="outline" disabled={busy} onClick={closeSettings}>取消</Button>
+                                      <Button disabled={busy || !captureDraft || !status} onClick={handleSaveSettings}>{busy ? '提交中…' : '确定'}</Button>
+                                    </div>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
                             </div>
-
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground"
-                                disabled={busy}
-                                aria-label={`Edit ${m.name}`}
-                                onClick={() => handleOpenEditModel(m)}
-                                title="Edit"
-                              >
-                                <Edit2 className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                disabled={busy}
-                                aria-label={`Delete ${m.name}`}
-                                onClick={() => { setMutationError(null); setModelDeleteTarget(m.id); }}
-                                title="Delete"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })
-                  )}
-                </TabsContent>
-
-                {/* Speech (TTS) Models Tab Content */}
-                <TabsContent value="speech" className="mt-2 space-y-2">
-                  {modelDraft.models.filter((m) => m.kind === 'speech').length === 0 ? (
-                    <div className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">
-                      No TTS models configured. Listen uses local Browser voice by default.
-                    </div>
-                  ) : (
-                    modelDraft.models
-                      .filter((m) => m.kind === 'speech')
-                      .map((m) => {
-                        const isActive = m.id === modelDraft.activeSpeechId;
-                        return (
-                          <div
-                            key={m.id}
-                            className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-colors ${
-                              isActive ? 'border-primary/60 bg-accent/40 shadow-2xs' : 'border-border/70 hover:bg-muted/40'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2.5">
-                              <button
-                                type="button"
-                                disabled={busy || isActive}
-                                aria-label={`Activate ${m.name}`}
-                                onClick={() => handleSetActiveModel(m.id)}
-                                className="mt-0.5"
-                                title={isActive ? 'Currently active' : 'Click to activate'}
-                              >
-                                {isActive ? (
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                ) : (
-                                  <Radio className="h-4 w-4 text-muted-foreground/60 hover:text-foreground" />
-                                )}
-                              </button>
-                              <div className="space-y-0.5">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-foreground">{m.name}</span>
-                                  <span className="font-mono text-[11px] text-muted-foreground">
-                                    {m.model}
-                                  </span>
-                                  <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
-                                    Voice: {m.voice || 'marin'}
-                                  </Badge>
-                                  {isActive && (
-                                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-                                      Active
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-                                  <span className="truncate max-w-[200px]">{m.baseUrl}</span>
-                                  <span>·</span>
-                                  <span>{m.apiKeySet ? `Key: ${m.apiKeyMasked}` : 'No API key'}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground"
-                                disabled={busy}
-                                aria-label={`Edit ${m.name}`}
-                                onClick={() => handleOpenEditModel(m)}
-                                title="Edit"
-                              >
-                                <Edit2 className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                disabled={busy}
-                                aria-label={`Delete ${m.name}`}
-                                onClick={() => { setMutationError(null); setModelDeleteTarget(m.id); }}
-                                title="Delete"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })
-                  )}
-                </TabsContent>
-              </Tabs>
-            </div>
-          </div>
-          <div className="space-y-3 border-t pt-4">
-            {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" disabled={busy} onClick={closeSettings}>取消</Button>
-              <Button disabled={busy || !captureDraft || !status} onClick={handleSaveSettings}>{busy ? '提交中…' : '确定'}</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+                            );
 }
