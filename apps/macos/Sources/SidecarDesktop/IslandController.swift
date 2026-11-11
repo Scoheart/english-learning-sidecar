@@ -37,10 +37,11 @@ func displayID(_ screen: NSScreen) -> String { (screen.deviceDescription[NSDevic
             pin: { [weak self] in self?.togglePin() }))
         hosting.sizingOptions = []
         panel.contentView = hosting
-        store.$islandEnabled.sink { [weak self] enabled in
+        // @Published emits in willSet. Schedule window updates after values commit.
+        store.$islandEnabled.receive(on: RunLoop.main).sink { [weak self] enabled in
             if enabled { self?.show() } else { self?.hide() }
         }.store(in: &cancellables)
-        store.$islandDisplay.sink { [weak self] _ in self?.position() }.store(in: &cancellables)
+        store.$islandDisplay.receive(on: RunLoop.main).sink { [weak self] _ in self?.position() }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .sink { [weak self] _ in self?.position() }.store(in: &cancellables)
         for name in [NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
