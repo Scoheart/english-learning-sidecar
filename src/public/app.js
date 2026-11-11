@@ -24,18 +24,13 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[ch]));
 
-  // Relative time formatter with fallbacks
   function relativeTime(dateValue) {
     if (!dateValue) return '';
     try {
-      const now = Date.now();
-      const past = new Date(dateValue).getTime();
-      const diffMs = now - past;
-      const diffSec = Math.floor(diffMs / 1000);
+      const diffSec = Math.floor((Date.now() - new Date(dateValue).getTime()) / 1000);
       const diffMin = Math.floor(diffSec / 60);
       const diffHour = Math.floor(diffMin / 60);
       const diffDay = Math.floor(diffHour / 24);
-
       if (diffSec < 45) return 'Just now';
       if (diffMin < 60) return `${diffMin}m ago`;
       if (diffHour < 24) return `${diffHour}h ago`;
@@ -49,7 +44,7 @@
   function fullDateTime(dateValue) {
     try {
       return new Intl.DateTimeFormat('en-US', {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
       }).format(new Date(dateValue));
     } catch {
       return '';
@@ -69,12 +64,12 @@
 
   const initials = source => ({
     codex: 'CX',
-    cursor: 'C',
+    cursor: 'CU',
     claude: 'CL',
-    qoder: 'Q',
+    qoder: 'QD',
     pi: 'π',
     dsh: 'DS',
-    grok: 'G',
+    grok: 'GK',
     manual: '✦'
   })[source] || (source ? source.slice(0, 2).toUpperCase() : 'AG');
 
@@ -83,9 +78,16 @@
   const statusLabels = {
     complete: 'Learned',
     pending: 'Queued',
-    processing: 'Learning',
+    processing: 'Analyzing',
     failed: 'Failed',
     skipped: 'Skipped'
+  };
+
+  const correctionBadges = {
+    translated: 'Translated · ZH → EN',
+    natural: 'Natural English',
+    natural_but_improvable: 'Polished for Fluency',
+    needs_correction: 'Corrected & Refined'
   };
 
   let toastTimer;
@@ -95,13 +97,12 @@
     el.textContent = message;
     el.classList.add('visible');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('visible'), 3200);
+    toastTimer = setTimeout(() => el.classList.remove('visible'), 2800);
   }
 
-  // Audio Speech Synthesis for authentic English pronunciation
-  function speakEnglish(text, onEnd) {
+  function speakEnglish(text) {
     if (!('speechSynthesis' in window)) {
-      toast('Speech synthesis is not supported in this browser');
+      toast('Speech synthesis is unavailable in this browser');
       return;
     }
     window.speechSynthesis.cancel();
@@ -110,17 +111,15 @@
     const cleanText = text.replace(/\[Demo preview\]/g, '').trim();
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = 'en-US';
-    utterance.rate = 0.95;
+    utterance.rate = 0.94;
 
     state.isSpeaking = true;
     utterance.onend = () => {
       state.isSpeaking = false;
-      if (typeof onEnd === 'function') onEnd();
       updateSpeakingButtons();
     };
     utterance.onerror = () => {
       state.isSpeaking = false;
-      if (typeof onEnd === 'function') onEnd();
       updateSpeakingButtons();
     };
 
@@ -138,6 +137,31 @@
     });
   }
 
+  // Highlight vocabulary terms inside the main English translation
+  function highlightTerms(translation, vocabulary = []) {
+    const clean = String(translation ?? '').replace(/\s*\[Demo preview\]\s*/g, '');
+    const terms = (vocabulary || [])
+      .map(v => String(v.term || '').trim())
+      .filter(t => t.length >= 3)
+      .sort((a, b) => b.length - a.length);
+
+    if (!terms.length) return esc(clean);
+
+    const escapedTerms = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const regex = new RegExp(`\\b(${escapedTerms.join('|')})\\b`, 'gi');
+
+    let lastIndex = 0;
+    let html = '';
+    let match;
+    while ((match = regex.exec(clean)) !== null) {
+      html += esc(clean.slice(lastIndex, match.index));
+      html += `<mark class="hero-term-mark" data-speak="${esc(match[0])}" title="Click to pronounce">${esc(match[0])}</mark>`;
+      lastIndex = regex.lastIndex;
+    }
+    html += esc(clean.slice(lastIndex));
+    return html;
+  }
+
   async function api(url, options) {
     const res = await fetch(url, options);
     const body = await res.json();
@@ -151,24 +175,15 @@
     const complete = stats.complete ?? 0;
     const knowledge = stats.knowledge ?? 0;
 
-    // Summary strip metrics
     if ($('metric-total')) $('metric-total').textContent = total;
     if ($('metric-complete')) $('metric-complete').textContent = complete;
     if ($('metric-knowledge')) $('metric-knowledge').textContent = knowledge;
-
-    // Sidebar stats
-    if ($('stat-total')) $('stat-total').textContent = total;
-    if ($('stat-learned')) $('stat-learned').textContent = complete;
-    if ($('stat-words')) $('stat-words').textContent = knowledge;
-
-    // Nav counts
     if ($('count-all')) $('count-all').textContent = total;
     if ($('count-knowledge')) $('count-knowledge').textContent = knowledge;
 
-    // Mode badges & Settings info
     const isLive = state.status?.mode === 'live';
     if ($('mode-badge')) {
-      $('mode-badge').textContent = isLive ? 'Live Model' : 'Demo Mode';
+      $('mode-badge').textContent = isLive ? 'Live' : 'Demo';
       $('mode-badge').classList.toggle('live', isLive);
     }
     if ($('top-demo-btn')) {
@@ -184,39 +199,19 @@
       $('capture-toggle').checked = !state.status?.paused;
     }
 
-    // Source filters in sidebar
     const sources = stats.sources || [];
     const sourceContainer = $('source-filters');
     if (sourceContainer) {
-      if (sources.length) {
+      if (sources.length > 1 || state.sourceFilter) {
         sourceContainer.innerHTML = sources.map(s => {
           const isSelected = state.sourceFilter === s.source;
-          return `
-            <button class="source-item ${isSelected ? 'selected' : ''}" data-source="${esc(s.source)}" aria-pressed="${isSelected}" type="button">
-              <span class="source-dot ${esc(s.source)}">${esc(initials(s.source))}</span>
-              <span>${esc(agentName(s.source))}</span>
-              <span class="source-count">${Number(s.count) || 0}</span>
-            </button>
-          `;
+          return `<button class="source-chip ${isSelected ? 'selected' : ''}" data-source="${esc(s.source)}" aria-pressed="${isSelected}" type="button">${esc(agentName(s.source))} <span>${Number(s.count) || 0}</span></button>`;
         }).join('');
       } else {
-        sourceContainer.innerHTML = '<p class="sidebar-hint">Waiting for agent activity...</p>';
+        sourceContainer.innerHTML = '';
       }
     }
 
-    // Filter clear button & active filter badge in topbar
-    const hasSourceFilter = Boolean(state.sourceFilter);
-    if ($('clear-source-filter')) {
-      $('clear-source-filter').classList.toggle('hidden', !hasSourceFilter);
-    }
-    if ($('active-filter-badge')) {
-      $('active-filter-badge').classList.toggle('hidden', !hasSourceFilter);
-      if ($('active-filter-text') && hasSourceFilter) {
-        $('active-filter-text').textContent = `Agent: ${agentName(state.sourceFilter)}`;
-      }
-    }
-
-    // Status tabs selected state
     document.querySelectorAll('[data-status]').forEach(btn => {
       const selected = btn.dataset.status === state.statusFilter;
       btn.classList.toggle('selected', selected);
@@ -252,16 +247,14 @@
     if (!events.length) {
       const noItemsAtAll = state.events.length === 0;
       listEl.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-illustration">${icon('book-open')}</div>
-          <h3>${noItemsAtAll ? 'Your learning starts here' : 'No matching prompts found'}</h3>
-          <p>${noItemsAtAll 
-            ? 'Connect your coding agents or trigger a sample prompt below. Sidecar will analyze your inputs asynchronously.' 
-            : 'Try refining your search keyword or clearing the status and agent filters.'}</p>
+        <div class="empty-inbox">
+          <p class="empty-inbox-title">${noItemsAtAll ? 'No prompts captured yet' : 'No matching prompts'}</p>
+          <p class="empty-inbox-sub">${noItemsAtAll
+            ? 'Submit a prompt in your coding agent or try a sample lesson.'
+            : 'Try clearing your filter or search query.'}</p>
           ${noItemsAtAll && state.status?.demoEnabled ? `
-            <button class="cta-button" id="demo-button" type="button">
-              ${icon('zap')}
-              <span>Try a sample prompt</span>
+            <button class="sample-cta-btn" id="demo-button" type="button">
+              ${icon('zap')} <span>Load sample lessons</span>
             </button>
           ` : ''}
         </div>
@@ -271,30 +264,19 @@
 
     listEl.innerHTML = events.map(e => {
       const isSelected = state.selectedId === e.id;
-      const hasTranslation = Boolean(e.analysis?.translation);
-      const cleanSnippet = esc(e.content);
-      const translationSnippet = hasTranslation ? esc(e.analysis.translation) : '';
+      const cleanTranslation = (e.analysis?.translation || '').replace(/\s*\[Demo preview\]\s*/g, '');
 
       return `
-        <button class="prompt-card ${isSelected ? 'active' : ''}" type="button" data-event-id="${esc(e.id)}" aria-pressed="${isSelected}">
-          <div class="prompt-card-head">
-            <span class="agent-emblem ${esc(e.source)}">${esc(initials(e.source))}</span>
-            <strong>${esc(agentName(e.source))}</strong>
-            <span class="prompt-timestamp" title="${esc(fullDateTime(e.createdAt))}">${esc(relativeTime(e.createdAt))}</span>
+        <button class="inbox-item ${isSelected ? 'active' : ''}" type="button" data-event-id="${esc(e.id)}" aria-pressed="${isSelected}">
+          <div class="inbox-item-top">
+            <span class="status-pip ${esc(e.status)}" title="${esc(statusLabels[e.status] || e.status)}"></span>
+            <span class="inbox-prompt">${esc(e.content)}</span>
           </div>
-          <p class="prompt-snippet">${cleanSnippet}</p>
-          ${hasTranslation ? `
-            <div class="prompt-translation-preview">
-              ${icon('sparkles')}
-              <span class="prompt-translation-text">${translationSnippet}</span>
-            </div>
-          ` : ''}
-          <div class="prompt-card-foot">
-            <span class="pill ${esc(e.status)}">
-              <span class="pill-dot"></span>
-              ${esc(statusLabels[e.status] || e.status)}
-            </span>
-            <span class="prompt-arrow">${icon('arrow-up-right')}</span>
+          ${cleanTranslation ? `<div class="inbox-translation">${esc(cleanTranslation)}</div>` : ''}
+          <div class="inbox-meta">
+            <span class="inbox-agent ${esc(e.source)}">${esc(agentName(e.source))}</span>
+            <span class="inbox-dot">·</span>
+            <span>${esc(relativeTime(e.createdAt))}</span>
           </div>
         </button>
       `;
@@ -308,227 +290,214 @@
     const event = state.events.find(e => e.id === state.selectedId);
     if (!event) {
       detailCard.innerHTML = `
-        <div class="detail-empty">
-          <div class="detail-empty-icon">${icon('book-open')}</div>
-          <h3>Select a conversation</h3>
-          <p>Your polished English translation, corrections, and key vocabulary will appear here in real time.</p>
+        <div class="stage-empty">
+          <div class="stage-empty-icon">${icon('book-open')}</div>
+          <h2>Select a prompt to study</h2>
+          <p>Your natural English expression, sentence structure breakdown, vocabulary collocations, and practice examples will open here.</p>
+          ${state.status?.demoEnabled && state.events.length === 0 ? `
+            <button class="sample-cta-btn" id="demo-button" type="button">
+              ${icon('zap')} <span>Generate Sample Lesson</span>
+            </button>
+          ` : ''}
         </div>
       `;
       return;
     }
 
     const a = event.analysis;
+    const badgeText = a ? (correctionBadges[a.correctionStatus] || 'English Lesson') : (statusLabels[event.status] || event.status);
 
-    // Corrections section
-    let correctionsHtml = '';
-    if (a?.corrections?.length) {
-      correctionsHtml = `
-        <div class="lesson-section">
-          <h4>${icon('refresh-cw')} REAL CORRECTIONS & POLISH</h4>
-          <div class="corrections-list">
-            ${a.corrections.map(c => `
-              <div class="correction-card">
-                <div class="diff-row before">
-                  <span class="diff-tag">BEFORE</span>
-                  <span class="diff-content">${esc(c.before)}</span>
+    // Corrections / Refinement strip
+    const correctionsHtml = a?.corrections?.length ? `
+      <section class="refinement-section" aria-label="Expression refinement">
+        <div class="section-kicker">${icon('sparkles')} EXPRESSION REFINEMENT (地道表达进阶)</div>
+        <div class="refinement-grid">
+          ${a.corrections.map(c => `
+            <div class="refinement-item">
+              <div class="refinement-pair">
+                <div class="refinement-before">
+                  <span class="diff-badge avoid">LITERAL / AVOID</span>
+                  <span class="diff-strike">${esc(c.before)}</span>
                 </div>
-                <div class="diff-row after">
-                  <span class="diff-tag">AFTER</span>
-                  <span class="diff-content">${esc(c.after)}</span>
-                </div>
-                ${c.reason ? `<p class="correction-reason">${esc(c.reason)}</p>` : ''}
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    }
-
-    // Vocabulary section
-    let vocabHtml = '';
-    if (a?.vocabulary?.length) {
-      vocabHtml = `
-        <div class="lesson-section">
-          <h4>${icon('book-open')} KEY VOCABULARY & COLLOCATIONS</h4>
-          <div class="vocab-grid">
-            ${a.vocabulary.map(v => `
-              <div class="vocab-card">
-                <div class="vocab-header">
-                  <div class="vocab-term-group">
-                    <span class="vocab-term">${esc(v.term)}</span>
-                    <button class="vocab-speaker-btn" type="button" data-speak="${esc(v.term)}" title="Pronounce word" aria-label="Pronounce ${esc(v.term)}">
-                      ${icon('volume-2')}
-                    </button>
-                  </div>
-                </div>
-                <div class="vocab-meaning">${esc(v.meaning)}</div>
-                ${v.usage ? `<div class="vocab-usage"><code>${esc(v.usage)}</code></div>` : ''}
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    }
-
-    // Grammar & Patterns section
-    let grammarHtml = '';
-    if (a?.grammar?.length) {
-      grammarHtml = `
-        <div class="lesson-section">
-          <h4>${icon('cpu')} GRAMMAR & SENTENCE PATTERNS</h4>
-          <div class="grammar-entries">
-            ${a.grammar.map(g => `
-              <div class="grammar-card">
-                <strong>${esc(g.label)}</strong>
-                <p>${esc(g.explanation)}</p>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `;
-    }
-
-    // Put it into practice / Examples section
-    let examplesHtml = '';
-    if (a?.examples?.length) {
-      examplesHtml = `
-        <div class="lesson-section">
-          <h4>${icon('layout-list')} PUT IT INTO PRACTICE (REAL-WORLD PROMPTS)</h4>
-          <div class="examples-list">
-            ${a.examples.map((x, idx) => `
-              <div class="example-card">
-                <span class="example-num">${String(idx + 1).padStart(2, '0')}</span>
-                <div class="example-content">
-                  <strong>${esc(x.english)}</strong>
-                  <p>${esc(x.chinese)}</p>
+                <span class="refinement-arrow">${icon('arrow-right')}</span>
+                <div class="refinement-after">
+                  <span class="diff-badge prefer">NATIVE / PREFER</span>
+                  <strong class="diff-good">${esc(c.after)}</strong>
                 </div>
               </div>
-            `).join('')}
-          </div>
+              ${c.reason ? `<p class="refinement-reason">${esc(c.reason)}</p>` : ''}
+            </div>
+          `).join('')}
         </div>
-      `;
-    }
+      </section>
+    ` : '';
 
-    // Editorial callouts
-    let notesHtml = '';
-    if (a?.notes) {
-      notesHtml = `
-        <div class="lesson-section">
-          <div class="editorial-callout">
-            <h4>${icon('lightbulb')} USAGE NOTE</h4>
-            <p>${esc(a.notes)}</p>
-          </div>
+    // Left Study Column: Vocabulary & Collocations
+    const vocabHtml = a?.vocabulary?.length ? `
+      <div class="study-panel">
+        <div class="panel-header">
+          <span class="panel-num">01</span>
+          <h3>Vocabulary & Collocations</h3>
+          <span class="panel-sub">高频技术词汇与搭配</span>
         </div>
-      `;
-    }
+        <div class="vocab-list">
+          ${a.vocabulary.map(v => `
+            <div class="vocab-item">
+              <div class="vocab-main">
+                <button class="vocab-word-btn" type="button" data-speak="${esc(v.term)}" title="Click to pronounce ${esc(v.term)}">
+                  <strong class="vocab-word">${esc(v.term)}</strong>
+                  <span class="vocab-audio-icon">${icon('volume-2')}</span>
+                </button>
+                <span class="vocab-def">${esc(v.meaning)}</span>
+              </div>
+              ${v.usage ? `
+                <div class="vocab-collocation" data-speak="${esc(v.usage)}" title="Click to pronounce collocation">
+                  <span class="collocation-prefix">e.g.</span>
+                  <code>${esc(v.usage)}</code>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
 
-    let summaryHtml = '';
-    if (a?.summary) {
-      summaryHtml = `
-        <div class="lesson-section">
-          <div class="editorial-callout" style="background: var(--emerald-soft); border-color: var(--emerald-border);">
-            <h4 style="color: var(--emerald) !important;">${icon('check-circle')} KEY TAKEAWAY</h4>
+    // Right Study Column: Grammar + Practice Examples
+    const grammarHtml = a?.grammar?.length ? `
+      <div class="study-subpanel">
+        <div class="panel-header">
+          <span class="panel-num">02</span>
+          <h3>Sentence Structure</h3>
+          <span class="panel-sub">句法与结构拆解</span>
+        </div>
+        <div class="grammar-list">
+          ${a.grammar.map(g => `
+            <div class="grammar-item">
+              <div class="grammar-formula">${esc(g.label)}</div>
+              <p class="grammar-desc">${esc(g.explanation)}</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    const examplesHtml = a?.examples?.length ? `
+      <div class="study-subpanel">
+        <div class="panel-header">
+          <span class="panel-num">03</span>
+          <h3>Put It Into Practice</h3>
+          <span class="panel-sub">同类工程场景举一反三</span>
+        </div>
+        <div class="practice-list">
+          ${a.examples.map((x, idx) => `
+            <div class="practice-item">
+              <span class="practice-idx">${String(idx + 1).padStart(2, '0')}</span>
+              <div class="practice-body">
+                <div class="practice-en-row">
+                  <strong class="practice-en">${esc(x.english)}</strong>
+                  <button class="mini-speak-btn" type="button" data-speak="${esc(x.english)}" title="Listen to example" aria-label="Listen to example">
+                    ${icon('volume-2')}
+                  </button>
+                </div>
+                <p class="practice-zh">${esc(x.chinese)}</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    const takeawayHtml = (a?.summary || a?.notes) ? `
+      <footer class="lesson-takeaway-footer">
+        ${a?.summary ? `
+          <div class="takeaway-block">
+            <span class="takeaway-label">${icon('check-circle')} KEY TAKEAWAY</span>
             <p>${esc(a.summary)}</p>
           </div>
-        </div>
-      `;
-    }
+        ` : ''}
+        ${a?.notes ? `
+          <div class="takeaway-block muted">
+            <span class="takeaway-label">${icon('lightbulb')} USAGE CONTEXT</span>
+            <p>${esc(a.notes)}</p>
+          </div>
+        ` : ''}
+      </footer>
+    ` : '';
 
     detailCard.innerHTML = `
-      <!-- Card Header -->
-      <div class="detail-head">
-        <div class="detail-head-left">
-          <span class="agent-emblem ${esc(event.source)}">${esc(initials(event.source))}</span>
-          <div class="detail-title-group">
-            <span class="detail-eyebrow">YOUR ENGLISH LESSON</span>
-            <h3>Prompt Breakdown</h3>
-            <div class="detail-source-row">
-              <span>${esc(agentName(event.source))}</span>
-              <span class="detail-source-sep">·</span>
-              <span title="${esc(fullDateTime(event.createdAt))}">${esc(relativeTime(event.createdAt))}</span>
-            </div>
+      <article class="lesson-sheet">
+        <!-- Top Meta & Action Bar -->
+        <header class="lesson-topbar">
+          <div class="lesson-meta-left">
+            <span class="agent-badge ${esc(event.source)}">${esc(initials(event.source))}</span>
+            <span class="meta-agent-name">${esc(agentName(event.source))}</span>
+            <span class="meta-sep">·</span>
+            <time class="meta-time" title="${esc(fullDateTime(event.createdAt))}">${esc(relativeTime(event.createdAt))}</time>
+            <span class="meta-sep">·</span>
+            <span class="lesson-type-tag">${esc(badgeText)}</span>
           </div>
-        </div>
-        <div class="detail-top-actions">
-          <button class="action-pill-btn primary" id="copy-translation" type="button" ${!a ? 'disabled' : ''} title="Copy fluent English translation">
-            <span class="copy-icon">${icon('copy')}</span>
-            <span class="copy-text">Copy English</span>
-          </button>
-        </div>
-      </div>
 
-      <!-- The Transformation Showcase -->
-      <div class="transform-container">
-        <!-- Original Prompt Bubble -->
-        <div class="original-prompt-card">
-          <div class="section-label-bar">
-            <span class="section-label">${icon('terminal')} WHAT YOU SUBMITTED</span>
-          </div>
-          <p>${esc(event.content)}</p>
-        </div>
-
-        <!-- Transformation Connector Divider -->
-        <div class="transform-divider">
-          <span class="transform-pill">
-            ${icon('arrow-down')}
-            <span>Polished into Authentic English</span>
-          </span>
-        </div>
-
-        <!-- Natural English Hero Card -->
-        ${a ? `
-          <div class="translation-hero-card">
-            <div class="hero-header">
-              <span class="hero-label">${icon('sparkles')} NATURAL & IDIOMATIC EXPRESSION</span>
-              <div class="hero-actions">
-                <button class="icon-action-btn speak-btn ${state.isSpeaking ? 'speaking' : ''}" id="listen-translation" type="button" title="Pronounce translation" aria-label="Listen to pronunciation">
-                  <span class="speak-icon">${icon(state.isSpeaking ? 'volume-x' : 'volume-2')}</span>
-                </button>
-                <button class="icon-action-btn" id="hero-copy-btn" type="button" title="Quick copy" aria-label="Copy English text">
-                  <span class="hero-copy-icon">${icon('copy')}</span>
-                </button>
-              </div>
-            </div>
-            <div class="translation-text">${esc(a.translation)}</div>
-            ${state.status?.mode === 'demo' ? `
-              <div class="demo-disclaimer">
-                ${icon('circle-help')}
-                <span>Demo preview data · Set LEARNING_API_KEY in .env for genuine AI prompt tutoring.</span>
-              </div>
-            ` : ''}
-          </div>
-        ` : `
-          <div class="waiting-lesson">
-            <div class="waiting-glyph">${icon(event.status === 'failed' ? 'circle-help' : 'clock')}</div>
-            <h4>${esc(statusLabels[event.status] || event.status)}</h4>
-            <p>${esc(event.error || (event.status === 'skipped' ? 'Only natural language prompts are analyzed.' : 'Your English lesson is prepared quietly in the background.'))}</p>
-          </div>
-        `}
-      </div>
-
-      <!-- Detailed Breakdown Sections -->
-      ${correctionsHtml}
-      ${vocabHtml}
-      ${grammarHtml}
-      ${examplesHtml}
-      ${notesHtml}
-      ${summaryHtml}
-
-      <!-- Bottom Card Action Footer -->
-      <div class="detail-actions-footer">
-        <div>
-          ${event.status === 'failed' ? `
-            <button class="action-pill-btn" id="retry-lesson" type="button">
-              ${icon('refresh-cw')}
-              <span>Retry Analysis</span>
+          <div class="lesson-actions">
+            <button class="stage-btn speak-btn ${state.isSpeaking ? 'speaking' : ''}" id="listen-translation" type="button" ${!a ? 'disabled' : ''} title="Listen to pronunciation (Space)">
+              <span class="speak-icon">${icon(state.isSpeaking ? 'volume-x' : 'volume-2')}</span>
+              <span>Listen</span>
             </button>
-          ` : ''}
-        </div>
-        <button class="action-pill-btn danger-btn" id="delete-lesson" type="button" title="Delete this conversation">
-          ${icon('trash')}
-          <span>Delete Record</span>
-        </button>
-      </div>
+            <button class="stage-btn primary" id="copy-translation" type="button" ${!a ? 'disabled' : ''} title="Copy English expression (C)">
+              <span class="copy-icon">${icon('copy')}</span>
+              <span class="copy-text">Copy English</span>
+            </button>
+            ${event.status === 'failed' ? `
+              <button class="stage-btn" id="retry-lesson" type="button">
+                ${icon('refresh-cw')}
+                <span>Retry</span>
+              </button>
+            ` : ''}
+            <button class="stage-icon-btn danger" id="delete-lesson" type="button" title="Delete this prompt record" aria-label="Delete record">
+              ${icon('trash')}
+            </button>
+          </div>
+        </header>
+
+        <!-- Hero Bilingual Stage -->
+        <section class="hero-stage" aria-label="Prompt and English translation">
+          <div class="source-prompt-block">
+            <span class="block-eyebrow">ORIGINAL PROMPT</span>
+            <p class="source-prompt-text">${esc(event.content)}</p>
+          </div>
+
+          ${a ? `
+            <div class="target-english-block">
+              <div class="target-eyebrow-row">
+                <span class="block-eyebrow accent">${icon('sparkles')} AUTHENTIC ENGINEERING ENGLISH</span>
+                <span class="hint-tip">Click highlighted terms or press <kbd>Space</kbd> to pronounce</span>
+              </div>
+              <h1 class="hero-english-text">${highlightTerms(a.translation, a.vocabulary)}</h1>
+            </div>
+          ` : `
+            <div class="waiting-stage">
+              <div class="waiting-icon">${icon(event.status === 'failed' ? 'circle-help' : 'clock')}</div>
+              <div>
+                <h3>${esc(statusLabels[event.status] || event.status)}</h3>
+                <p>${esc(event.error || (event.status === 'skipped' ? 'Only natural-language prompts are analyzed.' : 'Preparing your English breakdown in the background...'))}</p>
+              </div>
+            </div>
+          `}
+        </section>
+
+        ${correctionsHtml}
+
+        <!-- 2-Column Deep Learning Workspace -->
+        ${a ? `
+          <section class="study-workspace" aria-label="Vocabulary, grammar and practice">
+            ${vocabHtml}
+            <div class="study-right-col">
+              ${grammarHtml}
+              ${examplesHtml}
+            </div>
+          </section>
+          ${takeawayHtml}
+        ` : ''}
+      </article>
     `;
   }
 
@@ -547,9 +516,7 @@
     if (!items.length) {
       listEl.innerHTML = `
         <div class="knowledge-empty">
-          <div class="empty-illustration">${icon('library')}</div>
-          <h3>No matching knowledge items</h3>
-          <p>As you prompt your coding agents, vocabulary and grammar patterns are automatically extracted and organized into your library.</p>
+          <p>No saved vocabulary or grammar patterns match your filter yet.</p>
         </div>
       `;
       return;
@@ -560,22 +527,19 @@
       return `
         <article class="knowledge-card">
           <div class="knowledge-card-top">
-            <span class="knowledge-kind-tag ${esc(v.category)}">${esc(v.category)}</span>
-            <span class="knowledge-encounters">${Number(v.encounters) || 1} lesson${Number(v.encounters) === 1 ? '' : 's'}</span>
+            <span class="knowledge-tag ${esc(v.category)}">${esc(v.category)}</span>
+            <span class="knowledge-freq">${Number(v.encounters) || 1}× encountered</span>
           </div>
-          <div class="knowledge-card-title-row">
+          <div class="knowledge-title-row">
             <h3>${esc(v.term)}</h3>
             ${isVocab ? `
-              <button class="vocab-speaker-btn" type="button" data-speak="${esc(v.term)}" title="Pronounce word" aria-label="Pronounce ${esc(v.term)}">
+              <button class="mini-speak-btn" type="button" data-speak="${esc(v.term)}" title="Pronounce ${esc(v.term)}" aria-label="Pronounce ${esc(v.term)}">
                 ${icon('volume-2')}
               </button>
             ` : ''}
           </div>
-          <p>${esc(v.meaning)}</p>
-          <div class="knowledge-card-footer">
-            <span>Last observed ${esc(relativeTime(v.last_seen))}</span>
-            <span title="${esc(fullDateTime(v.last_seen))}">${esc(fullDateTime(v.last_seen))}</span>
-          </div>
+          <p class="knowledge-meaning">${esc(v.meaning)}</p>
+          <div class="knowledge-meta">Last seen ${esc(relativeTime(v.last_seen))}</div>
         </article>
       `;
     }).join('');
@@ -607,7 +571,7 @@
       }
       render();
     } catch (error) {
-      toast(`Unable to update data: ${error.message}`);
+      toast(`Sync error: ${error.message}`);
     }
   }
 
@@ -615,24 +579,10 @@
     if (name !== 'feed' && name !== 'knowledge') return;
     state.view = name;
 
-    const feedEl = $('feed-view');
-    const knowledgeEl = $('knowledge-view');
-    if (feedEl) feedEl.classList.toggle('hidden', name !== 'feed');
-    if (knowledgeEl) knowledgeEl.classList.toggle('hidden', name !== 'knowledge');
-
-    if ($('page-title')) {
-      $('page-title').textContent = name === 'feed'
-        ? 'English, in your flow.'
-        : 'Your Personal English Library.';
-    }
-    if ($('page-description')) {
-      $('page-description').textContent = name === 'feed'
-        ? 'Transforming your coding prompts into natural, authentic engineering English.'
-        : 'Curated vocabulary and structural patterns learned from your genuine coding prompts.';
-    }
-    if ($('breadcrumb')) {
-      $('breadcrumb').textContent = name === 'feed' ? 'Learning Feed' : 'Knowledge Base';
-    }
+    $('feed-view')?.classList.toggle('hidden', name !== 'feed');
+    $('knowledge-view')?.classList.toggle('hidden', name !== 'knowledge');
+    $('dock-feed-panel')?.classList.toggle('hidden', name !== 'feed');
+    $('dock-knowledge-panel')?.classList.toggle('hidden', name !== 'knowledge');
 
     document.querySelectorAll('[data-view]').forEach(btn => {
       const selected = btn.dataset.view === name;
@@ -642,39 +592,42 @@
     });
   }
 
-  // Copy helper with visual feedback
   async function copyText(text, btnElement) {
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      toast('Copied English expression to clipboard');
+      toast('Copied English expression');
       if (btnElement) {
         const textSpan = btnElement.querySelector('.copy-text');
-        const iconSpan = btnElement.querySelector('.copy-icon') || btnElement.querySelector('.hero-copy-icon');
+        const iconSpan = btnElement.querySelector('.copy-icon');
         const origText = textSpan ? textSpan.textContent : '';
         if (textSpan) textSpan.textContent = 'Copied!';
         if (iconSpan) iconSpan.innerHTML = icon('check');
-
         setTimeout(() => {
           if (textSpan) textSpan.textContent = origText;
           if (iconSpan) iconSpan.innerHTML = icon('copy');
-        }, 2000);
+        }, 1800);
       }
     } catch {
-      toast('Unable to copy in this browser environment');
+      toast('Clipboard unavailable');
     }
   }
 
-  // Event Listeners
+  let sampleIdx = 0;
+  const samplePrompts = [
+    '这个 API 需要支持高并发和幂等性处理。',
+    '请帮我排查一下内存泄漏的问题，定位具体的泄露点。',
+    '帮我重构一遍 UI，现在太丑了。',
+    '帮我解释 MCP 的生命周期和 Tool Discovery 机制。'
+  ];
+
   document.addEventListener('click', async event => {
-    // Navigation switch
     const nav = event.target.closest('[data-view]');
     if (nav) {
       switchView(nav.dataset.view);
       return;
     }
 
-    // Source filter in sidebar
     const sourceBtn = event.target.closest('[data-source]');
     if (sourceBtn) {
       const source = sourceBtn.dataset.source;
@@ -684,14 +637,6 @@
       return;
     }
 
-    // Clear source filter buttons
-    if (event.target.closest('#clear-source-filter') || event.target.closest('#remove-filter-btn')) {
-      state.sourceFilter = '';
-      render();
-      return;
-    }
-
-    // Status filter
     const statusBtn = event.target.closest('[data-status]');
     if (statusBtn) {
       state.statusFilter = statusBtn.dataset.status;
@@ -699,7 +644,6 @@
       return;
     }
 
-    // Knowledge Category Tab
     const categoryBtn = event.target.closest('[data-category]');
     if (categoryBtn) {
       state.category = categoryBtn.dataset.category;
@@ -712,27 +656,20 @@
       return;
     }
 
-    // Prompt selection in list
+    const speakTarget = event.target.closest('[data-speak]');
+    if (speakTarget) {
+      speakEnglish(speakTarget.dataset.speak);
+      return;
+    }
+
     const promptRow = event.target.closest('[data-event-id]');
     if (promptRow) {
       state.selectedId = promptRow.dataset.eventId;
       renderFeed();
       renderDetail();
-      if (window.matchMedia?.('(max-width: 990px)').matches) {
-        $('detail-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
       return;
     }
 
-    // Audio speech button (for specific word)
-    const speakBtn = event.target.closest('[data-speak]');
-    if (speakBtn) {
-      const word = speakBtn.dataset.speak;
-      speakEnglish(word);
-      return;
-    }
-
-    // Audio speech button (for whole translation)
     if (event.target.closest('#listen-translation')) {
       const currentEvent = state.events.find(e => e.id === state.selectedId);
       if (currentEvent?.analysis?.translation) {
@@ -741,14 +678,12 @@
       return;
     }
 
-    // Settings modal open
-    if (event.target.closest('#settings-button') || event.target.closest('#top-settings-button')) {
+    if (event.target.closest('#settings-button')) {
       $('settings-dialog')?.showModal();
       return;
     }
 
-    // Copy Translation buttons
-    const copyBtn = event.target.closest('#copy-translation') || event.target.closest('#hero-copy-btn');
+    const copyBtn = event.target.closest('#copy-translation');
     if (copyBtn) {
       const currentEvent = state.events.find(e => e.id === state.selectedId);
       const text = currentEvent?.analysis?.translation?.replace(/\[Demo preview\]/g, '').trim();
@@ -756,7 +691,6 @@
       return;
     }
 
-    // Retry failed lesson
     if (event.target.closest('#retry-lesson')) {
       try {
         await api(`/api/events/${state.selectedId}/retry`, { method: 'POST' });
@@ -768,36 +702,30 @@
       return;
     }
 
-    // Delete record
     if (event.target.closest('#delete-lesson')) {
-      if (!window.confirm('Delete this conversation record from local SQLite?')) return;
+      if (!window.confirm('Delete this prompt lesson from local storage?')) return;
       try {
         await api(`/api/events/${state.selectedId}`, { method: 'DELETE' });
         state.selectedId = null;
         await refresh();
-        toast('Conversation record removed');
+        toast('Prompt deleted');
       } catch (e) {
         toast(e.message);
       }
       return;
     }
 
-    // Sample / Demo Prompt trigger buttons
     if (event.target.closest('#demo-button') || event.target.closest('#top-demo-btn')) {
       try {
-        const prompts = [
-          '帮我重构一遍 UI，现在太丑了。',
-          '请帮我排查一下内存泄漏的问题，定位具体的泄露点。',
-          '这个 API 需要支持高并发和幂等性处理。',
-          '帮我写一个自动化部署脚本，兼容 Docker 和 K8s 环境。'
-        ];
-        const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
-        await api('/api/demo', {
+        const prompt = samplePrompts[sampleIdx % samplePrompts.length];
+        sampleIdx += 1;
+        const created = await api('/api/demo', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ prompt: randomPrompt })
+          body: JSON.stringify({ prompt })
         });
-        toast('Sample prompt queued for analysis');
+        if (created?.id) state.selectedId = created.id;
+        toast('Sample lesson added');
         await refresh();
       } catch (e) {
         toast(e.message);
@@ -805,24 +733,17 @@
     }
   });
 
-  // Search inputs
-  if ($('feed-search')) {
-    $('feed-search').addEventListener('input', e => {
-      state.search = e.target.value;
-      renderFeed();
-    });
-  }
+  $('feed-search')?.addEventListener('input', e => {
+    state.search = e.target.value;
+    renderFeed();
+  });
 
-  if ($('knowledge-search')) {
-    $('knowledge-search').addEventListener('input', e => {
-      state.knowledgeSearch = e.target.value;
-      renderKnowledge();
-    });
-  }
+  $('knowledge-search')?.addEventListener('input', e => {
+    state.knowledgeSearch = e.target.value;
+    renderKnowledge();
+  });
 
-  // Keyboard navigation & Shortcuts
   document.addEventListener('keydown', e => {
-    // Focus search on '/' or '⌘K'
     if ((e.key === '/' || (e.key === 'k' && (e.metaKey || e.ctrlKey))) &&
         !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) &&
         !$('settings-dialog')?.open) {
@@ -837,14 +758,12 @@
       if (document.activeElement === $('knowledge-search')) $('knowledge-search').blur();
     }
 
-    // Quick open settings with '⌘,'
     if (e.key === ',' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       $('settings-dialog')?.showModal();
       return;
     }
 
-    // List navigation with 'j'/'k' or Arrow keys when not in input
     if (!['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) && !$('settings-dialog')?.open) {
       if (e.key === 'j' || e.key === 'ArrowDown') {
         e.preventDefault();
@@ -855,7 +774,7 @@
       } else if (e.key === 'c') {
         const currentEvent = state.events.find(ev => ev.id === state.selectedId);
         if (currentEvent?.analysis?.translation) {
-          copyText(currentEvent.analysis.translation.replace(/\[Demo preview\]/g, '').trim());
+          copyText(currentEvent.analysis.translation.replace(/\[Demo preview\]/g, '').trim(), $('copy-translation'));
         }
       } else if (e.key === ' ' || e.key === 'p') {
         e.preventDefault();
@@ -878,31 +797,24 @@
     renderFeed();
     renderDetail();
 
-    const activeEl = document.querySelector('.prompt-card.active');
-    if (activeEl) {
-      activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    document.querySelector('.inbox-item.active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('capture-toggle')?.addEventListener('change', async e => {
+    try {
+      await api('/api/settings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ paused: !e.target.checked })
+      });
+      toast(e.target.checked ? 'Capture resumed' : 'Capture paused');
+      await refresh();
+    } catch (error) {
+      e.target.checked = !e.target.checked;
+      toast(error.message);
     }
-  }
+  });
 
-  // Settings: Capture Toggle
-  if ($('capture-toggle')) {
-    $('capture-toggle').addEventListener('change', async e => {
-      try {
-        await api('/api/settings', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ paused: !e.target.checked })
-        });
-        toast(e.target.checked ? 'Prompt capture resumed' : 'Prompt capture paused');
-        await refresh();
-      } catch (error) {
-        e.target.checked = !e.target.checked;
-        toast(error.message);
-      }
-    });
-  }
-
-  // Theme Management (Light / Dark)
   function setTheme(theme) {
     document.documentElement.dataset.theme = theme;
     const toggleBtn = $('theme-toggle');
@@ -922,30 +834,18 @@
   } catch {}
   setTheme(preferredTheme === 'dark' ? 'dark' : 'light');
 
-  if ($('theme-toggle')) {
-    $('theme-toggle').addEventListener('click', () => {
-      const current = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-      setTheme(current);
-    });
-  }
+  $('theme-toggle')?.addEventListener('click', () => {
+    const current = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    setTheme(current);
+  });
 
-  // Today Date Display
-  if ($('current-day')) {
-    $('current-day').textContent = new Intl.DateTimeFormat('en-US', {
-      weekday: 'short', month: 'short', day: 'numeric'
-    }).format(new Date());
-  }
-
-  // SSE Stream Setup for Live Real-Time Updates
   const stream = new EventSource('/api/stream');
   stream.addEventListener('update', refresh);
   stream.addEventListener('error', () => {
     $('connection-light')?.classList.remove('online');
-    if ($('connection-label')) $('connection-label').textContent = 'Reconnecting';
   });
   stream.addEventListener('open', () => {
     $('connection-light')?.classList.add('online');
-    if ($('connection-label')) $('connection-label').textContent = 'Local service';
     refresh();
   });
 
