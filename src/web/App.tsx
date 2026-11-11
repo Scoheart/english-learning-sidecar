@@ -3,7 +3,6 @@ import {
   BookOpen,
   Check,
   Copy,
-  Library,
   Moon,
   Plus,
   RefreshCw,
@@ -15,6 +14,9 @@ import {
   Volume2,
   VolumeX,
   ArrowRight,
+  Layers,
+  GitBranch,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,13 +42,37 @@ import {
 
 interface VocabularyItem {
   term: string;
+  phonetic?: string;
+  pos?: string;
   meaning: string;
+  morphology?: string;
   usage?: string;
+  nuance?: string;
+}
+
+interface SentenceConstituent {
+  role: string;
+  fragment: string;
+  explanation: string;
+}
+
+interface SentenceAnatomy {
+  pattern?: string;
+  tense?: string;
+  voice?: string;
+  constituents?: SentenceConstituent[];
 }
 
 interface GrammarItem {
   label: string;
   explanation: string;
+}
+
+interface DiscourseAnalysis {
+  logic?: string;
+  cohesion?: string;
+  upgradedParagraph?: string;
+  upgradedChinese?: string;
 }
 
 interface CorrectionItem {
@@ -66,7 +92,9 @@ interface Analysis {
   correctionStatus: string;
   corrections: CorrectionItem[];
   vocabulary: VocabularyItem[];
+  sentenceAnatomy?: SentenceAnatomy;
   grammar: GrammarItem[];
+  discourse?: DiscourseAnalysis;
   examples: ExampleItem[];
   notes?: string;
   summary?: string;
@@ -547,7 +575,7 @@ export default function App() {
                         </span>
                       </div>
                       {analysis.corrections[0].reason && (
-                        <p className="mt-1.5 text-muted-foreground leading-relaxed">
+                        <p className="mt-1.5 leading-relaxed text-muted-foreground">
                           {analysis.corrections[0].reason}
                         </p>
                       )}
@@ -556,57 +584,164 @@ export default function App() {
                 </CardContent>
               </Card>
 
-              {/* 2. Progressive Disclosure Tabs: Only ONE study dimension visible at a time */}
+              {/* 2. Systematic 4-Layer Progressive Disclosure Tabs: 字/词 · 句 · 段 · 练 */}
               {analysis && (
-                <Tabs defaultValue="vocabulary" className="w-full">
-                  <TabsList>
-                    <TabsTrigger value="vocabulary" className="text-xs">
-                      Vocabulary ({analysis.vocabulary?.length || 0})
+                <Tabs defaultValue="lexis" className="w-full">
+                  <TabsList className="grid w-full grid-cols-4 sm:w-auto sm:inline-flex">
+                    <TabsTrigger value="lexis" className="text-xs">
+                      字与词 · Lexis ({analysis.vocabulary?.length || 0})
                     </TabsTrigger>
-                    <TabsTrigger value="grammar" className="text-xs">
-                      Sentence Structure ({analysis.grammar?.length || 0})
+                    <TabsTrigger value="sentence" className="text-xs">
+                      句法拆解 · Sentence
+                    </TabsTrigger>
+                    <TabsTrigger value="discourse" className="text-xs">
+                      篇章成段 · Discourse
                     </TabsTrigger>
                     <TabsTrigger value="examples" className="text-xs">
-                      Practice Examples ({analysis.examples?.length || 0})
+                      实战举一反三 ({analysis.examples?.length || 0})
                     </TabsTrigger>
                   </TabsList>
 
-                  {/* Tab 1: Key Vocabulary Cards */}
-                  <TabsContent value="vocabulary" className="mt-4">
+                  {/* Tab 1: 字 (Morphology/Roots) & 词 (Collocations/Nuance) */}
+                  <TabsContent value="lexis" className="mt-4">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       {analysis.vocabulary?.map((v, idx) => (
-                        <Card key={idx} className="border-border/70 shadow-2xs">
-                          <CardHeader className="pb-2">
-                            <div className="flex items-center justify-between">
-                              <CardTitle className="text-base font-semibold tracking-tight">
-                                {v.term}
-                              </CardTitle>
+                        <Card key={idx} className="flex flex-col border-border/70 shadow-2xs">
+                          <CardHeader className="pb-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-baseline gap-2">
+                                <CardTitle className="text-base font-semibold tracking-tight">
+                                  {v.term}
+                                </CardTitle>
+                                {v.phonetic && (
+                                  <span className="font-mono text-[11px] text-muted-foreground">
+                                    {v.phonetic}
+                                  </span>
+                                )}
+                              </div>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 text-muted-foreground"
+                                className="h-7 w-7 shrink-0 text-muted-foreground"
                                 onClick={() => speak(v.term)}
                                 title={`Pronounce ${v.term}`}
                               >
                                 <Volume2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
-                            <CardDescription className="text-xs">{v.meaning}</CardDescription>
+                            <CardDescription className="text-xs font-medium text-foreground/85">
+                              {v.meaning}
+                            </CardDescription>
                           </CardHeader>
-                          {v.usage && (
-                            <CardContent className="pt-0">
-                              <div className="rounded-md bg-muted/60 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground">
+
+                          <CardContent className="flex flex-1 flex-col justify-between space-y-3 pt-0 text-xs">
+                            {v.morphology && (
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  字源构词 · Morphology
+                                </span>
+                                <p className="leading-relaxed text-muted-foreground">
+                                  {v.morphology}
+                                </p>
+                              </div>
+                            )}
+
+                            {v.nuance && (
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  词义辨析 · Nuance
+                                </span>
+                                <p className="leading-relaxed text-muted-foreground">{v.nuance}</p>
+                              </div>
+                            )}
+
+                            {v.usage && (
+                              <div className="rounded-md bg-muted/60 px-2.5 py-1.5 font-mono text-[11px] text-foreground/90">
                                 {v.usage}
                               </div>
-                            </CardContent>
-                          )}
+                            )}
+                          </CardContent>
                         </Card>
                       ))}
                     </div>
                   </TabsContent>
 
-                  {/* Tab 2: Grammar & Structure */}
-                  <TabsContent value="grammar" className="mt-4">
+                  {/* Tab 2: 句 (Pattern, Tense, Voice, Constituents & Grammar) */}
+                  <TabsContent value="sentence" className="mt-4 space-y-4">
+                    {analysis.sentenceAnatomy &&
+                      (analysis.sentenceAnatomy.pattern ||
+                        analysis.sentenceAnatomy.tense ||
+                        analysis.sentenceAnatomy.voice) && (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <Card className="border-border/70 shadow-2xs">
+                            <CardHeader className="pb-1.5 pt-3.5">
+                              <CardDescription className="text-[10px] font-semibold uppercase tracking-wider">
+                                句子结构 · Pattern
+                              </CardDescription>
+                              <CardTitle className="text-xs font-semibold leading-snug">
+                                {analysis.sentenceAnatomy.pattern || 'SVO 主谓宾结构'}
+                              </CardTitle>
+                            </CardHeader>
+                          </Card>
+
+                          <Card className="border-border/70 shadow-2xs">
+                            <CardHeader className="pb-1.5 pt-3.5">
+                              <CardDescription className="text-[10px] font-semibold uppercase tracking-wider">
+                                时态解析 · Tense
+                              </CardDescription>
+                              <CardTitle className="text-xs font-semibold leading-snug">
+                                {analysis.sentenceAnatomy.tense || '一般现在时 Simple Present'}
+                              </CardTitle>
+                            </CardHeader>
+                          </Card>
+
+                          <Card className="border-border/70 shadow-2xs">
+                            <CardHeader className="pb-1.5 pt-3.5">
+                              <CardDescription className="text-[10px] font-semibold uppercase tracking-wider">
+                                语态解析 · Voice
+                              </CardDescription>
+                              <CardTitle className="text-xs font-semibold leading-snug">
+                                {analysis.sentenceAnatomy.voice || '主动语态 Active Voice'}
+                              </CardTitle>
+                            </CardHeader>
+                          </Card>
+                        </div>
+                      )}
+
+                    {analysis.sentenceAnatomy?.constituents &&
+                      analysis.sentenceAnatomy.constituents.length > 0 && (
+                        <Card className="border-border/70 shadow-2xs">
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center gap-1.5">
+                              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                              <CardTitle className="text-sm font-semibold">
+                                句子组成成分拆解 · Sentence Constituents
+                              </CardTitle>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                            {analysis.sentenceAnatomy.constituents.map((c, idx) => (
+                              <div
+                                key={idx}
+                                className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <Badge variant="secondary" className="text-[10px] font-medium">
+                                    {c.role}
+                                  </Badge>
+                                </div>
+                                <p className="mt-2 font-mono text-xs font-semibold text-foreground">
+                                  {c.fragment}
+                                </p>
+                                <p className="mt-1 leading-relaxed text-muted-foreground">
+                                  {c.explanation}
+                                </p>
+                              </div>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      )}
+
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       {analysis.grammar?.map((g, idx) => (
                         <Card key={idx} className="border-border/70 shadow-2xs">
@@ -623,7 +758,89 @@ export default function App() {
                     </div>
                   </TabsContent>
 
-                  {/* Tab 3: Practice Examples */}
+                  {/* Tab 3: 段 (Discourse Logic, Cohesion & Upgraded Paragraph) */}
+                  <TabsContent value="discourse" className="mt-4 space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Card className="border-border/70 shadow-2xs">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">
+                              句群逻辑推进 · Discourse Logic
+                            </CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs font-medium leading-relaxed text-foreground">
+                            {analysis.discourse?.logic || '诉求声明 → 约束条件 → 机制落地'}
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-border/70 shadow-2xs">
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                            <CardTitle className="text-sm font-semibold">
+                              中英思维与成段转换 · Cohesion
+                            </CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            {analysis.discourse?.cohesion || analysis.notes}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {analysis.discourse?.upgradedParagraph && (
+                      <Card className="border-border/70 shadow-2xs">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                          <div>
+                            <CardTitle className="text-sm font-semibold">
+                              成段升格示范 · Production Engineering Paragraph
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                              将单句指令扩展为标准 RFC / PR / 技术文档段落
+                            </CardDescription>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => speak(analysis.discourse?.upgradedParagraph)}
+                            >
+                              <Volume2 className="h-3 w-3" />
+                              Listen
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => copyTranslation(analysis.discourse?.upgradedParagraph)}
+                            >
+                              <Copy className="h-3 w-3" />
+                              Copy
+                            </Button>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-2.5 pt-2">
+                          <p className="text-sm font-medium leading-relaxed text-foreground">
+                            {analysis.discourse.upgradedParagraph}
+                          </p>
+                          {analysis.discourse.upgradedChinese && (
+                            <p className="text-xs leading-relaxed text-muted-foreground">
+                              {analysis.discourse.upgradedChinese}
+                            </p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+                  </TabsContent>
+
+                  {/* Tab 4: Practice Examples */}
                   <TabsContent value="examples" className="mt-4">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       {analysis.examples?.map((ex, idx) => (
