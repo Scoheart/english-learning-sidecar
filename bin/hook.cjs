@@ -36,8 +36,8 @@ process.stdin.on('end', async () => {
           headers: { 'content-type': 'application/json', 'x-sidecar-token': token },
           body: JSON.stringify({
             source, eventType: 'user.prompt.submitted',
-            sessionId: String(payload.session_id || payload.conversation_id || ''),
-            turnId: String(payload.turn_id || ''),
+            sessionId: String(payload.sessionId || payload.session_id || payload.conversation_id || ''),
+            turnId: String(payload.promptId || payload.turnId || payload.turn_id || ''),
             content: prompt,
           }),
           signal: ac.signal,

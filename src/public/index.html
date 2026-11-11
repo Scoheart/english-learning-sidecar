@@ -1,75 +1,95 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f8fafc">
-  <meta name="description" content="Independent English learning, alongside your coding agents.">
-  <title>English Sidecar · Learn in the flow</title>
+  <meta name="theme-color" content="#fafafa">
+  <meta name="description" content="A quiet English companion for your coding conversations.">
+  <title>English Sidecar — English in your flow</title>
   <link rel="stylesheet" href="/styles.css">
+  <script src="/icons.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" aria-label="Navigation">
-      <div class="brand">
-        <div class="brand-mark">e<span>.</span></div>
-        <div><strong>english<span class="brand-sub">sidecar</span></strong><small>LEARN IN THE FLOW</small></div>
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand" aria-label="Sidecar, English companion">
+        <span class="brand-mark" aria-hidden="true"><span data-icon="book-open"></span></span>
+        <div class="brand-copy"><strong>sidecar<span class="brand-dot">.</span></strong><small>English companion</small></div>
       </div>
-      <div class="sidebar-content">
-        <div class="sidebar-heading">WORKSPACE</div>
-        <button class="nav-item active" data-view="feed" type="button"><span class="nav-icon">◈</span> Learning feed <span class="nav-count" id="count-all">0</span></button>
-        <button class="nav-item" data-view="knowledge" type="button"><span class="nav-icon">◇</span> Knowledge base <span class="nav-count" id="count-knowledge">0</span></button>
-        <div class="sidebar-heading source-heading">YOUR AGENTS</div>
-        <div id="source-filters" class="source-filters"><p class="sidebar-hint">No agent events yet</p></div>
+      <div class="sidebar-scroll">
+        <div class="sidebar-label">WORKSPACE</div>
+        <nav class="nav-main" aria-label="Workspace">
+          <button class="nav-item active" type="button" data-view="feed" aria-label="Learning feed" aria-current="page"><span data-icon="layout-list"></span><span class="nav-label">Learning feed</span><span id="count-all" class="nav-count">0</span></button>
+          <button class="nav-item" type="button" data-view="knowledge" aria-label="Knowledge base"><span data-icon="library"></span><span class="nav-label">Knowledge base</span><span id="count-knowledge" class="nav-count">0</span></button>
+        </nav>
+        <div class="sidebar-label source-heading">AGENTS <span class="source-label-note">Source filters</span></div>
+        <div id="source-filters" class="source-filters"><p class="sidebar-hint">No activity yet</p></div>
       </div>
       <div class="sidebar-bottom">
-        <div class="privacy-note"><span class="privacy-symbol">✳</span><div><strong>Private by design</strong><small>Prompts stay on this device until you enable a model API.</small></div></div>
-        <button class="sidebar-settings" id="settings-button" type="button"><span>⚙</span> Settings <span>↗</span></button>
+        <div class="privacy-note"><span data-icon="shield-check"></span><div><strong>On your device</strong><small>Private, local-first learning.</small></div></div>
+        <button class="sidebar-settings" id="settings-button" type="button"><span data-icon="settings"></span><span>Settings</span><span class="sidebar-settings-arrow" data-icon="chevron-right"></span></button>
       </div>
     </aside>
 
     <div class="main-layout">
       <header class="topbar">
-        <div class="breadcrumbs">Workspace <span>/</span> <strong id="breadcrumb">Learning feed</strong></div>
-        <div class="top-actions"><span class="status-light" id="connection-light"></span><span id="connection-label">Connecting</span><span class="top-divider"></span><span id="mode-badge" class="mode-badge">DEMO MODE</span></div>
+        <div class="breadcrumbs"><span>Workspace</span><span class="crumb-slash">/</span><strong id="breadcrumb">Learning feed</strong></div>
+        <div class="top-actions">
+          <span class="service-indicator"><span id="connection-light" class="status-light"></span><span id="connection-label">Connecting</span></span>
+          <span id="mode-badge" class="mode-badge">Demo mode</span>
+          <button class="icon-button theme-toggle" type="button" id="theme-toggle" aria-label="Switch color theme" title="Switch theme"><span data-icon="moon"></span></button>
+          <button class="icon-button mobile-settings" type="button" id="top-settings-button" aria-label="Open settings" title="Settings"><span data-icon="settings"></span></button>
+        </div>
       </header>
+
       <main class="page">
         <section class="page-header">
-          <div class="eyebrow"><span class="eyebrow-line"></span> YOUR DAILY LANGUAGE COMPANION</div>
-          <div class="heading-line"><div><h1 id="page-title">Learn as you build<span class="period">.</span></h1><p id="page-description" class="lede">Your coding conversations, transformed into little moments of learning.</p></div><div class="current-day" id="current-day"></div></div>
+          <div class="page-heading"><div class="eyebrow">YOUR PERSONAL LEARNING SPACE</div><h1 id="page-title">English, in your flow.</h1><p id="page-description" class="lede">Little lessons from the conversations you're already having.</p></div>
+          <div class="today" id="current-day"></div>
         </section>
 
         <section id="feed-view">
-          <div class="metric-grid">
-            <div class="metric-card"><div class="metric-label">TOTAL CONVERSATIONS <span>↗</span></div><div class="metric-value" id="metric-total">0</div><div class="metric-note">Across all connected agents</div></div>
-            <div class="metric-card"><div class="metric-label">LESSONS LEARNED <span>✦</span></div><div class="metric-value" id="metric-complete">0</div><div class="metric-note">Explained & saved locally</div></div>
-            <div class="metric-card"><div class="metric-label">KNOWLEDGE GAINED <span>◇</span></div><div class="metric-value" id="metric-knowledge">0</div><div class="metric-note">Vocabulary and grammar items</div></div>
+          <div class="summary-strip" aria-label="Learning overview">
+            <div class="summary-item"><span class="summary-number" id="metric-total">0</span><span class="summary-label">Conversations</span></div>
+            <div class="summary-item"><span class="summary-number" id="metric-complete">0</span><span class="summary-label">Lessons learned</span></div>
+            <div class="summary-item"><span class="summary-number" id="metric-knowledge">0</span><span class="summary-label">Knowledge items</span></div>
           </div>
           <div class="content-grid">
-            <div class="feed-column">
-              <div class="section-title-row"><div><h2>Learning feed</h2><p>Every prompt is a learning opportunity.</p></div><div class="segmented" role="group" aria-label="Status filter"><button type="button" data-status="" class="selected">All</button><button type="button" data-status="complete">Learned</button><button type="button" data-status="pending">Pending</button><button type="button" data-status="failed">Failed</button></div></div>
-              <div class="prompt-list" id="prompt-list"><div class="empty-state">Loading your learning activity…</div></div>
-            </div>
-            <div class="detail-column"><div class="detail-card" id="detail-card"><div class="detail-empty"><div class="empty-symbol">✳</div><h3>Your lesson appears here</h3><p>Select a conversation to explore its English insights.</p></div></div></div>
+            <section class="feed-column" aria-label="Recent conversations">
+              <div class="section-title-row"><div><h2>Recent conversations</h2><p>One prompt at a time.</p></div><span class="section-count" id="visible-count"></span></div>
+              <div class="feed-toolbar">
+                <label class="search-control" for="feed-search"><span data-icon="search"></span><input id="feed-search" type="search" placeholder="Search prompts..." autocomplete="off"><kbd>/</kbd></label>
+                <div class="segmented" role="group" aria-label="Lesson status">
+                  <button type="button" data-status="" class="selected" aria-pressed="true">All</button>
+                  <button type="button" data-status="complete">Learned</button>
+                  <button type="button" data-status="pending">Pending</button>
+                  <button type="button" data-status="failed">Failed</button>
+                </div>
+              </div>
+              <div class="prompt-list" id="prompt-list"><div class="empty-state">Loading lessons...</div></div>
+            </section>
+            <section class="detail-column" aria-label="Selected lesson"><div class="detail-card" id="detail-card"><div class="detail-empty"><span data-icon="book-open"></span><h3>Choose a conversation</h3><p>Your English lesson will appear here.</p></div></div></section>
           </div>
         </section>
 
-        <section id="knowledge-view" class="hidden">
-          <div class="knowledge-intro"><div class="knowledge-art">Aa<span>·</span></div><div><h2>Your growing vocabulary</h2><p>Key terms and grammar points collected automatically from each lesson.</p></div></div>
-          <div class="knowledge-tabs"><button class="selected" data-category="all" type="button">All knowledge</button><button data-category="vocabulary" type="button">Vocabulary</button><button data-category="grammar" type="button">Grammar</button></div>
+        <section id="knowledge-view" class="hidden" aria-label="Saved knowledge">
+          <div class="knowledge-header"><div><h2>Saved knowledge</h2><p>Words and structures worth remembering.</p></div><label class="search-control knowledge-search" for="knowledge-search"><span data-icon="search"></span><input id="knowledge-search" type="search" placeholder="Find a word or phrase..." autocomplete="off"></label></div>
+          <div class="knowledge-tabs" role="group" aria-label="Knowledge category"><button class="selected" data-category="all" type="button" aria-pressed="true">All items</button><button data-category="vocabulary" type="button">Vocabulary</button><button data-category="grammar" type="button">Grammar</button></div>
           <div id="knowledge-list" class="knowledge-grid"></div>
         </section>
       </main>
     </div>
   </div>
 
-  <dialog id="settings-dialog" class="settings-dialog">
-    <form method="dialog" class="dialog-head"><div><span class="eyebrow">PREFERENCES</span><h2>Sidecar settings</h2></div><button class="close-btn" value="close" aria-label="Close settings">✕</button></form>
-    <div class="settings-body"><div class="setting-row"><div><strong>Capture new prompts</strong><p>Pause without changing any Agent configuration.</p></div><label class="toggle"><input id="capture-toggle" type="checkbox" checked><span class="track"></span></label></div>
-      <div class="settings-divider"></div><div class="setting-row"><div><strong>Independent learning model</strong><p id="settings-model">Demo preview</p></div><span class="model-pill" id="settings-mode">DEMO</span></div>
-      <div class="settings-help"><strong>Connect your own API</strong><p>Add <code>LEARNING_API_KEY</code> and <code>LEARNING_MODE=live</code> to <code>.env</code>, then restart the service. Keys never belong in Git.</p></div>
-      <div class="settings-help"><strong>Storage</strong><p>Events and knowledge are stored in a local SQLite database. The collector listens on loopback only.</p></div>
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-head"><div><div class="eyebrow">PREFERENCES</div><h2 id="settings-title">Settings</h2></div><form method="dialog"><button class="close-btn" value="close" aria-label="Close settings"><span data-icon="x"></span></button></form></div>
+    <div class="settings-body">
+      <div class="setting-row"><div><strong>Capture new prompts</strong><p>Pause listening without changing Agent settings.</p></div><label class="toggle" aria-label="Capture new prompts"><input id="capture-toggle" type="checkbox" checked><span class="track"></span></label></div>
+      <div class="settings-divider"></div>
+      <div class="setting-row"><div><strong>Learning model</strong><p id="settings-model">Demo preview</p></div><span class="model-pill" id="settings-mode">DEMO</span></div>
+      <div class="settings-help"><span data-icon="terminal"></span><div><strong>Use your own model</strong><p>Add <code>LEARNING_API_KEY</code> and <code>LEARNING_MODE=live</code> to <code>.env</code>, then restart. Never commit keys to Git.</p></div></div>
+      <div class="settings-help"><span data-icon="shield-check"></span><div><strong>Local by default</strong><p>Events and knowledge stay in SQLite. The collector only listens on loopback; model calls require an explicit API configuration.</p></div></div>
     </div>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
