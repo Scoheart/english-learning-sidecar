@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f172a">
-  <meta name="description" content="English Sidecar — A quiet, private English learning companion for your AI coding flow.">
+  <meta name="description" content="English Sidecar — A quiet, private English learning studio for your AI coding flow.">
   <title>English Sidecar — English in your flow</title>
   <link rel="stylesheet" href="/styles.css">
   <script src="/icons.js" defer></script>
@@ -12,266 +12,150 @@
 </head>
 <body>
   <div class="app-shell">
-    <!-- Left Navigation Sidebar -->
-    <aside class="sidebar" aria-label="Primary navigation">
-      <div class="brand">
-        <div class="brand-badge" aria-hidden="true">
-          <span class="brand-icon" data-icon="book-open"></span>
-          <span class="brand-spark" data-icon="sparkles"></span>
+    <!-- Left Unified Inbox & Navigation Dock (Compact 320px) -->
+    <aside class="sidebar-dock" aria-label="Prompt inbox and navigation">
+      <!-- Top Brand & Utility Bar -->
+      <header class="dock-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"><span data-icon="book-open"></span></span>
+          <span class="brand-title">sidecar<span class="brand-dot">.</span></span>
+          <span id="mode-badge" class="mode-tag">Demo</span>
         </div>
-        <div class="brand-meta">
-          <div class="brand-title">sidecar<span class="brand-accent">.</span></div>
-          <span class="brand-tag">English Companion</span>
-        </div>
-      </div>
-
-      <!-- Quick Stats Card inside sidebar -->
-      <div class="sidebar-stats-card" aria-label="Quick overview">
-        <div class="sidebar-stat-cell">
-          <span class="stat-cell-num" id="stat-total">0</span>
-          <span class="stat-cell-lbl">Prompts</span>
-        </div>
-        <div class="stat-divider"></div>
-        <div class="sidebar-stat-cell">
-          <span class="stat-cell-num text-emerald" id="stat-learned">0</span>
-          <span class="stat-cell-lbl">Learned</span>
-        </div>
-        <div class="stat-divider"></div>
-        <div class="sidebar-stat-cell">
-          <span class="stat-cell-num text-indigo" id="stat-words">0</span>
-          <span class="stat-cell-lbl">Library</span>
-        </div>
-      </div>
-
-      <div class="sidebar-scroll">
-        <div class="sidebar-group-label">WORKSPACE</div>
-        <nav class="nav-main" aria-label="Workspace views">
-          <button class="nav-item active" type="button" data-view="feed" aria-label="Learning feed" aria-current="page">
-            <span class="nav-icon" data-icon="layout-list"></span>
-            <span class="nav-label">Learning Feed</span>
-            <span id="count-all" class="nav-count">0</span>
-          </button>
-          <button class="nav-item" type="button" data-view="knowledge" aria-label="Knowledge base">
-            <span class="nav-icon" data-icon="library"></span>
-            <span class="nav-label">Knowledge Base</span>
-            <span id="count-knowledge" class="nav-count">0</span>
-          </button>
-        </nav>
-
-        <div class="sidebar-group-header">
-          <span class="sidebar-group-label">CONNECTED AGENTS</span>
-          <button id="clear-source-filter" class="clear-filter-btn hidden" type="button" title="Clear filter">All</button>
-        </div>
-        <div id="source-filters" class="source-filters">
-          <p class="sidebar-hint">Waiting for agent activity...</p>
-        </div>
-      </div>
-
-      <div class="sidebar-footer">
-        <div class="privacy-card">
-          <div class="privacy-icon" data-icon="shield-check"></div>
-          <div class="privacy-text">
-            <strong>Local & Private</strong>
-            <small>Direct SQLite · Zero cloud leakage</small>
-          </div>
-        </div>
-        <button class="sidebar-settings-btn" id="settings-button" type="button">
-          <span data-icon="settings"></span>
-          <span>Preferences</span>
-          <span class="settings-shortcut">⌘,</span>
-        </button>
-      </div>
-    </aside>
-
-    <!-- Main Workspace Content -->
-    <div class="main-layout">
-      <!-- Universal Topbar -->
-      <header class="topbar">
-        <div class="topbar-left">
-          <div class="breadcrumbs">
-            <span class="crumb-root">Workspace</span>
-            <span class="crumb-separator">/</span>
-            <strong id="breadcrumb" class="crumb-current">Learning feed</strong>
-          </div>
-          <div id="active-filter-badge" class="filter-indicator hidden">
-            <span id="active-filter-text"></span>
-            <button id="remove-filter-btn" type="button" aria-label="Remove filter">&times;</button>
-          </div>
-        </div>
-
-        <div class="topbar-right">
-          <!-- Live Service Indicator -->
-          <div class="service-pill" title="Local loopback collection service">
-            <span id="connection-light" class="pulse-beacon online"></span>
-            <span id="connection-label" class="service-text">Local service</span>
-          </div>
-
-          <!-- Model Mode Pill -->
-          <span id="mode-badge" class="mode-pill">Demo mode</span>
-
-          <!-- Quick Demo Prompt button (shown in demo mode or when SIDECAR_DEMO=1) -->
-          <button class="action-btn demo-btn hidden" id="top-demo-btn" type="button" title="Send a sample prompt to observe the flow">
-            <span data-icon="zap"></span>
-            <span>Sample prompt</span>
-          </button>
-
-          <!-- Theme switcher -->
-          <button class="icon-btn theme-btn" type="button" id="theme-toggle" aria-label="Switch color theme" title="Switch theme">
+        <div class="dock-utilities">
+          <span class="service-dot-wrap" title="Local loopback service status">
+            <span id="connection-light" class="status-dot online"></span>
+            <span id="connection-label" class="sr-only">Local service</span>
+          </span>
+          <button class="utility-btn" type="button" id="theme-toggle" aria-label="Switch color theme" title="Switch theme">
             <span data-icon="moon"></span>
           </button>
-
-          <!-- Mobile settings toggle -->
-          <button class="icon-btn mobile-settings-btn" type="button" id="top-settings-button" aria-label="Open settings" title="Settings">
+          <button class="utility-btn" type="button" id="settings-button" aria-label="Open preferences" title="Preferences (⌘,)">
             <span data-icon="settings"></span>
           </button>
         </div>
       </header>
 
-      <!-- Page Viewport -->
-      <main class="page">
-        <!-- Hero Header -->
-        <section class="page-header">
-          <div class="page-heading">
-            <div class="page-kicker">
-              <span class="kicker-dot"></span>
-              <span>PERSONAL ENGLISH COMPANION</span>
-            </div>
-            <h1 id="page-title">English, in your flow.</h1>
-            <p id="page-description" class="page-subtitle">Transforming your coding prompts into natural, authentic engineering English.</p>
-          </div>
-          <div class="page-header-aside">
-            <div class="date-badge" id="current-day"></div>
-          </div>
-        </section>
+      <!-- Primary View Switcher -->
+      <nav class="dock-switcher" aria-label="Workspace views">
+        <button class="switcher-tab active" type="button" data-view="feed" aria-current="page">
+          <span data-icon="layout-list"></span>
+          <span>Prompts</span>
+          <span id="count-all" class="tab-count">0</span>
+        </button>
+        <button class="switcher-tab" type="button" data-view="knowledge">
+          <span data-icon="library"></span>
+          <span>Vocabulary</span>
+          <span id="count-knowledge" class="tab-count">0</span>
+        </button>
+      </nav>
 
-        <!-- Summary Strip (Retained for test suite compatibility & styled cleanly) -->
-        <div class="summary-strip" aria-label="Learning metrics">
-          <div class="summary-item">
-            <span class="summary-number" id="metric-total">0</span>
-            <div class="summary-meta">
-              <span class="summary-label">Total Prompts</span>
-              <span class="summary-sublabel">Observed across agents</span>
+      <!-- Feed Search & Compact Filters (Shown in Feed View) -->
+      <div id="dock-feed-panel" class="dock-feed-panel">
+        <div class="dock-controls">
+          <label class="search-input-wrap" for="feed-search">
+            <span class="search-icon" data-icon="search"></span>
+            <input id="feed-search" type="search" placeholder="Filter prompts..." autocomplete="off">
+            <kbd class="search-kbd">/</kbd>
+          </label>
+
+          <div class="filter-bar">
+            <div class="status-pills" role="group" aria-label="Lesson status">
+              <button type="button" data-status="" class="filter-pill selected" aria-pressed="true">All</button>
+              <button type="button" data-status="complete" class="filter-pill">Learned</button>
+              <button type="button" data-status="pending" class="filter-pill">Queued</button>
+              <button type="button" data-status="failed" class="filter-pill">Failed</button>
             </div>
-          </div>
-          <div class="summary-item">
-            <span class="summary-number text-emerald" id="metric-complete">0</span>
-            <div class="summary-meta">
-              <span class="summary-label">Lessons Learned</span>
-              <span class="summary-sublabel">Idiomatic translations</span>
-            </div>
-          </div>
-          <div class="summary-item">
-            <span class="summary-number text-indigo" id="metric-knowledge">0</span>
-            <div class="summary-meta">
-              <span class="summary-label">Knowledge Items</span>
-              <span class="summary-sublabel">Vocabulary & patterns</span>
-            </div>
+            <div id="source-filters" class="source-filters"></div>
           </div>
         </div>
 
-        <!-- VIEW 1: Learning Feed & Split Detail Pane -->
-        <section id="feed-view" class="view-panel">
-          <div class="workspace-grid">
-            <!-- Left List Column: Prompt Timeline -->
-            <section class="feed-column" aria-label="Prompt feed">
-              <div class="column-header">
-                <div class="column-title-group">
-                  <h2 class="column-title">Prompt Timeline</h2>
-                  <span class="column-count" id="visible-count">0 entries</span>
-                </div>
-              </div>
+        <!-- Scannable Prompt Inbox List -->
+        <div class="prompt-list" id="prompt-list" role="feed" aria-label="Captured prompts">
+          <div class="empty-inbox">Loading prompts...</div>
+        </div>
+      </div>
 
-              <!-- Search and Filter Bar -->
-              <div class="feed-filter-bar">
-                <div class="search-box">
-                  <span class="search-icon" data-icon="search"></span>
-                  <input id="feed-search" type="search" placeholder="Search prompts or agent..." autocomplete="off">
-                  <kbd class="search-kbd">/</kbd>
-                </div>
-
-                <div class="status-tabs" role="group" aria-label="Filter by lesson status">
-                  <button type="button" data-status="" class="status-tab selected" aria-pressed="true">All</button>
-                  <button type="button" data-status="complete" class="status-tab">Learned</button>
-                  <button type="button" data-status="pending" class="status-tab">Queued</button>
-                  <button type="button" data-status="failed" class="status-tab">Failed</button>
-                </div>
-              </div>
-
-              <!-- List of Cards -->
-              <div class="prompt-list" id="prompt-list" role="feed" aria-label="List of captured prompts">
-                <div class="empty-state">
-                  <div class="empty-spinner"></div>
-                  <p>Loading prompt history...</p>
-                </div>
-              </div>
-            </section>
-
-            <!-- Right Detail Column: Lesson Breakdown Card -->
-            <section class="detail-column" aria-label="Lesson analysis">
-              <div class="detail-card" id="detail-card">
-                <div class="detail-empty">
-                  <div class="detail-empty-icon" data-icon="book-open"></div>
-                  <h3>Select a conversation</h3>
-                  <p>Your polished English translation, corrections, and key vocabulary will appear here in real time.</p>
-                </div>
-              </div>
-            </section>
+      <!-- Knowledge Sidebar Summary (Shown when in Knowledge View) -->
+      <div id="dock-knowledge-panel" class="dock-knowledge-panel hidden">
+        <div class="dock-controls">
+          <label class="search-input-wrap" for="knowledge-search">
+            <span class="search-icon" data-icon="search"></span>
+            <input id="knowledge-search" type="search" placeholder="Search vocabulary & grammar..." autocomplete="off">
+          </label>
+          <div class="knowledge-cat-list" role="group" aria-label="Knowledge categories">
+            <button class="cat-item selected" data-category="all" type="button" aria-pressed="true">
+              <span>All saved items</span>
+            </button>
+            <button class="cat-item" data-category="vocabulary" type="button">
+              <span>Vocabulary & Collocations</span>
+            </button>
+            <button class="cat-item" data-category="grammar" type="button">
+              <span>Grammar & Patterns</span>
+            </button>
           </div>
-        </section>
+        </div>
+      </div>
 
-        <!-- VIEW 2: Knowledge Base -->
-        <section id="knowledge-view" class="view-panel hidden" aria-label="Saved knowledge">
-          <div class="knowledge-toolbar">
-            <div class="knowledge-tabs" role="group" aria-label="Knowledge category filter">
-              <button class="k-tab selected" data-category="all" type="button" aria-pressed="true">
-                <span data-icon="library"></span>
-                <span>All Items</span>
-              </button>
-              <button class="k-tab" data-category="vocabulary" type="button">
-                <span data-icon="book-open"></span>
-                <span>Vocabulary</span>
-              </button>
-              <button class="k-tab" data-category="grammar" type="button">
-                <span data-icon="cpu"></span>
-                <span>Grammar & Patterns</span>
-              </button>
-            </div>
+      <!-- Compact Dock Footer -->
+      <footer class="dock-footer">
+        <div class="summary-strip" aria-label="Learning metrics">
+          <span class="footer-privacy"><span data-icon="shield-check"></span> Local</span>
+          <span class="footer-sep">·</span>
+          <span><strong id="metric-complete">0</strong>/<span id="metric-total">0</span> learned</span>
+          <span class="footer-sep">·</span>
+          <span><strong id="metric-knowledge">0</strong> terms</span>
+          <span id="visible-count" class="sr-only"></span>
+        </div>
+        <button class="sample-trigger-btn hidden" id="top-demo-btn" type="button" title="Insert a sample prompt">
+          <span data-icon="zap"></span>
+          <span>+ Sample</span>
+        </button>
+      </footer>
+    </aside>
 
-            <div class="search-box knowledge-search-box">
-              <span class="search-icon" data-icon="search"></span>
-              <input id="knowledge-search" type="search" placeholder="Search words, idioms, explanations..." autocomplete="off">
-            </div>
+    <!-- Main Learning Stage (~78% of Viewport Width, Full Height) -->
+    <main class="main-stage">
+      <!-- VIEW 1: Dedicated English Lesson Studio -->
+      <section id="feed-view" class="stage-view" aria-label="English lesson studio">
+        <div id="detail-card" class="lesson-stage">
+          <!-- Dynamically populated by app.js -->
+        </div>
+      </section>
+
+      <!-- VIEW 2: Knowledge Library Stage -->
+      <section id="knowledge-view" class="stage-view hidden" aria-label="Saved knowledge library">
+        <header class="library-stage-header">
+          <div>
+            <span class="stage-eyebrow">PERSONAL LEXICON</span>
+            <h1 id="page-title">Knowledge Library</h1>
+            <p id="page-description" class="stage-subtitle">Vocabulary, technical collocations, and grammar patterns extracted from your coding prompts.</p>
           </div>
-
-          <div id="knowledge-list" class="knowledge-grid">
-            <!-- Rendered dynamically -->
-          </div>
-        </section>
-      </main>
-    </div>
+        </header>
+        <div id="knowledge-list" class="knowledge-grid"></div>
+      </section>
+    </main>
   </div>
 
-  <!-- Preferences & Settings Modal Dialog -->
+  <!-- Preferences Modal -->
   <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
     <div class="dialog-card">
       <div class="dialog-header">
-        <div class="dialog-title-group">
-          <div class="dialog-eyebrow">PREFERENCES</div>
+        <div>
+          <span class="stage-eyebrow">PREFERENCES</span>
           <h2 id="settings-title">Sidecar Settings</h2>
         </div>
         <form method="dialog">
-          <button class="dialog-close-btn" value="close" aria-label="Close dialog">
+          <button class="utility-btn" value="close" aria-label="Close dialog">
             <span data-icon="x"></span>
           </button>
         </form>
       </div>
 
       <div class="dialog-content">
-        <!-- Capture Toggle -->
         <div class="settings-row">
           <div class="settings-info">
             <strong>Capture New Prompts</strong>
-            <p>Temporarily pause listening to agent hooks without uninstalling hooks or interrupting your coding workflow.</p>
+            <p>Pause hook ingestion temporarily without touching your coding agent configurations.</p>
           </div>
           <label class="switch-toggle" aria-label="Toggle prompt capture">
             <input id="capture-toggle" type="checkbox" checked>
@@ -281,36 +165,25 @@
 
         <div class="dialog-divider"></div>
 
-        <!-- Model Status -->
         <div class="settings-row">
           <div class="settings-info">
-            <strong>Analysis Model</strong>
+            <strong>Analysis Engine</strong>
             <p id="settings-model">Demo preview</p>
           </div>
           <span class="settings-badge" id="settings-mode">DEMO</span>
         </div>
 
-        <!-- Guidance Card -->
-        <div class="settings-callout">
-          <div class="callout-icon" data-icon="terminal"></div>
-          <div class="callout-text">
-            <strong>Connecting Your Own Model</strong>
-            <p>Set <code>LEARNING_MODE=live</code>, <code>LEARNING_API_KEY=...</code>, and <code>LEARNING_MODEL=gpt-4o-mini</code> in <code>.env</code>, then restart the service. Compatible with any OpenAI-compatible API endpoint.</p>
-          </div>
-        </div>
-
-        <div class="settings-callout privacy-callout">
-          <div class="callout-icon text-emerald" data-icon="shield-check"></div>
-          <div class="callout-text">
-            <strong>Local-First Guarantee</strong>
-            <p>All prompt records and extracted knowledge are securely stored in your local SQLite database (<code>~/.english-sidecar</code>). Secrets and tokens are filtered prior to storage.</p>
+        <div class="settings-note">
+          <span data-icon="terminal"></span>
+          <div>
+            <strong>Connect Live LLM</strong>
+            <p>Set <code>LEARNING_MODE=live</code> and <code>LEARNING_API_KEY</code> in <code>.env</code>, then restart. All data stays in local SQLite (<code>~/.english-sidecar</code>).</p>
           </div>
         </div>
       </div>
     </div>
   </dialog>
 
-  <!-- Global Feedback Toast -->
   <div id="toast" class="toast-notification" role="status" aria-live="polite"></div>
 </body>
 </html>
