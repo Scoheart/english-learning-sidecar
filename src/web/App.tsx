@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Search,
   Settings2,
-  Sparkles,
   Sun,
   Trash2,
   Volume2,
@@ -47,16 +46,14 @@ import {
 } from '@/components/ui/dialog';
 
 import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel } from '@/components/ui/alert-dialog';
+import {
+  StyledCheckbox,
+  getConstituentTheme,
+  getCorrectionStatusMeta,
+  getPosBadgeStyle,
+} from '@/components/studio-elements';
 
-interface VocabularyItem {
-  term: string;
-  phonetic?: string;
-  pos?: string;
-  meaning: string;
-  morphology?: string;
-  usage?: string;
-  nuance?: string;
-}
+import { ExampleAttribution, VocabularyDetails, type LearningExample, type VocabularyItem } from '@/components/vocabulary-details';
 
 interface SentenceConstituent {
   role: string;
@@ -90,10 +87,7 @@ interface CorrectionItem {
   reason?: string;
 }
 
-interface ExampleItem {
-  english: string;
-  chinese: string;
-}
+type ExampleItem = LearningExample;
 
 interface Analysis {
   translation: string;
@@ -511,6 +505,18 @@ export default function App() {
   const needsModelSetup = status?.mode === 'unconfigured';
   const analysis = selectedEvent?.analysis;
   const cleanHeroEnglish = analysis?.translation?.replace(/\s*\[Demo preview\]\s*/g, '') || '';
+  const vocabularyCount = analysis?.vocabulary?.length ?? 0;
+  const grammarCount = analysis?.grammar?.length ?? 0;
+  const exampleCount = analysis?.examples?.length ?? 0;
+  const lexisGridClass =
+    vocabularyCount >= 4
+      ? 'sm:grid-cols-2 xl:grid-cols-4'
+      : vocabularyCount === 3
+        ? 'sm:grid-cols-2 xl:grid-cols-3'
+        : vocabularyCount === 2
+          ? 'sm:grid-cols-2'
+          : 'grid-cols-1';
+  const singleVocabularyCard = vocabularyCount === 1;
 
   return (
     <div className="flex h-dvh w-screen overflow-hidden bg-background text-foreground">
@@ -582,9 +588,9 @@ export default function App() {
         <Separator />
 
         {/* Minimalist Prompt History List */}
-        <ScrollArea className="flex-1 px-2 py-2">
+        <ScrollArea className="flex-1 py-2 pl-2 pr-4">
           {mainMode === 'feed' ? (
-            <div className="space-y-1">
+            <div className="space-y-1 pr-1">
               {filteredEvents.length === 0 ? (
                 <div className="px-3 py-10 text-center text-xs text-muted-foreground">
                   {search.trim() ? '没有匹配的提示，请尝试其他关键词。' : needsModelSetup
@@ -599,18 +605,26 @@ export default function App() {
                       key={item.id}
                       type="button"
                       onClick={() => setSelectedId(item.id)}
-                      className={`group flex w-full flex-col gap-1 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                      className={`sidebar-prompt-item group flex w-full flex-col gap-1.5 rounded-xl border px-3.5 py-2.5 text-left ${
                         isSelected
-                          ? 'bg-accent text-accent-foreground font-medium shadow-2xs'
-                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                          ? 'border-primary/25 bg-accent/90 text-accent-foreground font-medium shadow-xs'
+                          : 'border-transparent text-muted-foreground hover:border-border/60 hover:bg-muted/60 hover:text-foreground'
                       }`}
                     >
+                      <span
+                        aria-hidden="true"
+                        className={`absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-primary transition-all duration-200 ${
+                          isSelected ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'
+                        }`}
+                      />
                       <span className="truncate text-[13px] leading-snug text-foreground">
                         {item.content}
                       </span>
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
                         <TaskStatusBadge status={item.status} />
-                        <span>{AGENT_NAMES[item.source] || item.source}</span>
+                        <span className="font-medium text-foreground/75">
+                          {AGENT_NAMES[item.source] || item.source}
+                        </span>
                         <span>·</span>
                         <span>{formatRelativeTime(item.createdAt)}</span>
                       </div>
@@ -652,15 +666,25 @@ export default function App() {
         {mutationError && <div role="alert" className="mx-10 mt-4 rounded-md bg-destructive/15 p-3 text-xs text-destructive">{mutationError}</div>}
         {mainMode === 'feed' ? (
           selectedEvent ? (
-            <div className="mx-auto flex max-w-4xl flex-col gap-6 px-10 py-10">
-              {/* 1. Primary Hero Card: The English Expression */}
-              <Card className="border-border/80 shadow-xs">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div key={selectedEvent.id} className="animate-stage-in mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
+              {/* 1. Prompt detail: original input followed by its English translation */}
+              <Card className="surface-card overflow-hidden border-border/80 shadow-xs">
+                <div className="h-1 w-full bg-gradient-to-r from-indigo-500/80 via-sky-500/70 to-emerald-500/75" />
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 pb-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <TaskStatusBadge status={selectedEvent.status} />
-                    <Badge variant="secondary" className="font-normal">
+                    <Badge variant="secondary" className="font-medium">
                       {AGENT_NAMES[selectedEvent.source] || selectedEvent.source}
                     </Badge>
+                    {analysis && (
+                      <span
+                        className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                          getCorrectionStatusMeta(analysis.correctionStatus).className
+                        }`}
+                      >
+                        {getCorrectionStatusMeta(analysis.correctionStatus).label}
+                      </span>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       {formatRelativeTime(selectedEvent.createdAt)}
                     </span>
@@ -677,9 +701,9 @@ export default function App() {
                             onClick={() => speak(cleanHeroEnglish)}
                           >
                             {speakingText === cleanHeroEnglish ? (
-                              <VolumeX className="h-3.5 w-3.5 text-destructive" />
+                              <VolumeX className="h-3.5 w-3.5 text-destructive animate-voice-pulse" />
                             ) : (
-                              <Volume2 className="h-3.5 w-3.5" />
+                              <Volume2 className="h-3.5 w-3.5 text-primary" />
                             )}
                             {speakingText === cleanHeroEnglish ? 'Stop' : 'Listen'}
                           </Button>
@@ -749,48 +773,67 @@ export default function App() {
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-6 pt-2">
+                <CardContent className="space-y-4 pt-2">
+                  <p className="whitespace-pre-wrap break-words text-pretty font-editorial text-2xl font-semibold leading-[1.4] tracking-tight text-foreground sm:text-[27px]">
+                    {selectedEvent.content}
+                  </p>
+
                   {analysis ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                        <Sparkles className="h-3 w-3" />
-                        <span>Native Engineering Expression</span>
-                      </div>
-                      <p className="text-2xl font-semibold leading-snug tracking-tight text-foreground sm:text-[26px]">
-                        {cleanHeroEnglish}
-                      </p>
-                    </div>
+                    <p className="whitespace-pre-wrap break-words text-pretty font-editorial text-2xl font-semibold leading-[1.4] tracking-tight text-foreground sm:text-[27px]">
+                      {cleanHeroEnglish}
+                    </p>
                   ) : (
-                    <div className="py-6 text-sm text-muted-foreground">
+                    <div className="text-sm text-muted-foreground">
                       {needsModelSetup && selectedEvent.status === 'pending'
                         ? '等待接入模型：此提示已加入队列。请先接入并启用带有 API Key 的文本模型，之后会自动处理；缺少密钥时不会生成内容。'
                         : selectedEvent.error || (selectedEvent.status === 'cancelled' ? '分析已取消，可点击 Retry 重试。' : selectedEvent.status === 'skipped' ? '此提示未分析。' : selectedEvent.status === 'failed' ? '分析失败，请重试。' : selectedEvent.status === 'pending' ? '提示已排队，将在后台自动处理。' : 'Analyzing prompt in the background...')}
                     </div>
                   )}
 
-                  <Separator />
-
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                      Original Prompt
-                    </span>
-                    <p className="text-sm leading-relaxed text-muted-foreground">
-                      {selectedEvent.content}
-                    </p>
-                  </div>
-
-                  {/* Subtle Inline Refinement Comparison */}
-                  {analysis?.corrections?.map((correction, index) => (
-                    <div key={index} className="rounded-lg bg-muted/50 px-4 py-3 text-xs">
-                      <p className="mb-2 font-medium">{correction.kind === 'style' ? '风格优化（不表示原句有错）' : correction.kind === 'correction' ? '语言纠错' : '纠错 / 风格建议（未分类）'}</p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-muted-foreground">{correction.before}</span>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                        <span className="font-medium text-foreground">{correction.after}</span>
+                  {/* Color-Annotated Inline Refinement Comparison */}
+                  {analysis?.corrections?.map((correction, index) => {
+                    const isStyle = correction.kind === 'style';
+                    return (
+                      <div
+                        key={index}
+                        className={`rounded-xl border px-4 py-3.5 text-xs transition-all duration-200 ${
+                          isStyle
+                            ? 'border-violet-500/25 bg-violet-500/[0.04] dark:bg-violet-500/[0.08]'
+                            : 'border-amber-500/25 bg-amber-500/[0.04] dark:bg-amber-500/[0.08]'
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center gap-2">
+                          <span
+                            className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${
+                              isStyle
+                                ? 'border-violet-500/30 bg-violet-500/15 text-violet-800 dark:text-violet-200'
+                                : 'border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                            }`}
+                          >
+                            {isStyle
+                              ? '风格升格 · Style Upgrade（不表示原句有错）'
+                              : correction.kind === 'correction'
+                                ? '语言纠错 · Grammar & Lexical Fix'
+                                : '表达对比 · Expression Refinement'}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-md border border-rose-500/25 bg-rose-500/10 px-2.5 py-1 font-phonetic text-xs text-rose-800 dark:text-rose-200">
+                            {correction.before}
+                          </span>
+                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                          <span className="rounded-md border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1 font-phonetic text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                            {correction.after}
+                          </span>
+                        </div>
+                        {correction.reason && (
+                          <p className="mt-2 border-l-2 border-border pl-2.5 leading-relaxed text-muted-foreground">
+                            {correction.reason}
+                          </p>
+                        )}
                       </div>
-                      {correction.reason && <p className="mt-1.5 leading-relaxed text-muted-foreground">{correction.reason}</p>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </CardContent>
               </Card>
 
@@ -799,32 +842,44 @@ export default function App() {
                 <Tabs defaultValue="lexis" className="w-full">
                   <TabsList className="grid w-full grid-cols-4 sm:w-auto sm:inline-flex">
                     <TabsTrigger value="lexis" className="text-xs">
-                      字与词 · Lexis ({analysis.vocabulary?.length || 0})
+                      字与词
                     </TabsTrigger>
                     <TabsTrigger value="sentence" className="text-xs">
-                      句法拆解 · Sentence
+                      句法拆解
                     </TabsTrigger>
                     <TabsTrigger value="discourse" className="text-xs">
-                      篇章成段 · Discourse
+                      篇章成段
                     </TabsTrigger>
                     <TabsTrigger value="examples" className="text-xs">
-                      实战举一反三 ({analysis.examples?.length || 0})
+                      实战举一反三
                     </TabsTrigger>
                   </TabsList>
 
                   {/* Tab 1: 字 (Morphology/Roots) & 词 (Collocations/Nuance) */}
                   <TabsContent value="lexis" className="mt-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className={`grid gap-4 ${lexisGridClass}`}>
                       {analysis.vocabulary?.map((v, idx) => (
-                        <Card key={idx} className="flex flex-col border-border/70 shadow-2xs">
-                          <CardHeader className="pb-2.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-baseline gap-2">
-                                <CardTitle className="text-base font-semibold tracking-tight">
-                                  {v.term}
-                                </CardTitle>
+                        <Card key={idx} className="surface-card flex flex-col overflow-hidden border-border/75 shadow-2xs">
+                          <div className="h-0.5 w-full bg-gradient-to-r from-indigo-500/70 via-amber-500/60 to-violet-500/70" />
+                          <CardHeader className="pb-2.5 pt-4">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-baseline gap-2">
+                                  <CardTitle className="font-editorial text-lg font-bold tracking-tight text-foreground">
+                                    {v.term}
+                                  </CardTitle>
+                                  {v.pos && (
+                                    <span
+                                      className={`rounded border px-1.5 py-0 text-[10px] font-semibold ${getPosBadgeStyle(
+                                        v.pos,
+                                      )}`}
+                                    >
+                                      {v.pos}
+                                    </span>
+                                  )}
+                                </div>
                                 {v.phonetic && (
-                                  <span className="font-mono text-[11px] text-muted-foreground">
+                                  <span className="inline-block rounded bg-muted/80 px-1.5 py-0.5 font-phonetic text-[11px] text-muted-foreground">
                                     {v.phonetic}
                                   </span>
                                 )}
@@ -832,44 +887,62 @@ export default function App() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 shrink-0 text-muted-foreground"
+                                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary"
                                 onClick={() => speak(v.term)}
                                 aria-label={`Pronounce ${v.term}`} title={`Pronounce ${v.term}`}
                               >
                                 <Volume2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
-                            <CardDescription className="text-xs font-medium text-foreground/85">
-                              {v.meaning}
-                            </CardDescription>
                           </CardHeader>
 
-                          <CardContent className="flex flex-1 flex-col justify-between space-y-3 pt-0 text-xs">
+                          <CardContent
+                            className={`flex flex-1 flex-col gap-2.5 pt-0 text-xs ${
+                              singleVocabularyCard ? 'lg:grid lg:grid-cols-2 lg:items-start' : ''
+                            }`}
+                          >
+                            <div className="rounded-r-lg border-l-[3px] border-indigo-500 bg-indigo-500/[0.06] dark:bg-indigo-500/[0.11] px-2.5 py-2 space-y-0.5">
+                              <span className="block text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                                核心释义 · Meaning
+                              </span>
+                              <CardDescription className="text-xs font-semibold text-foreground">
+                                {v.meaning}
+                              </CardDescription>
+                            </div>
+
                             {v.morphology && (
-                              <div className="space-y-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              <div className="rounded-r-lg border-l-[3px] border-amber-500 bg-amber-500/[0.06] dark:bg-amber-500/[0.10] px-2.5 py-2 space-y-0.5">
+                                <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
                                   字源构词 · Morphology
                                 </span>
-                                <p className="leading-relaxed text-muted-foreground">
+                                <p className="leading-relaxed text-foreground/85">
                                   {v.morphology}
                                 </p>
                               </div>
                             )}
 
                             {v.nuance && (
-                              <div className="space-y-1">
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              <div className="rounded-r-lg border-l-[3px] border-violet-500 bg-violet-500/[0.06] dark:bg-violet-500/[0.10] px-2.5 py-2 space-y-0.5">
+                                <span className="block text-[10px] font-bold uppercase tracking-wider text-violet-700 dark:text-violet-300">
                                   词义辨析 · Nuance
                                 </span>
-                                <p className="leading-relaxed text-muted-foreground">{v.nuance}</p>
+                                <p className="leading-relaxed text-foreground/85">{v.nuance}</p>
                               </div>
                             )}
 
                             {v.usage && (
-                              <div className="rounded-md bg-muted/60 px-2.5 py-1.5 font-mono text-[11px] text-foreground/90">
-                                {v.usage}
+                              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] dark:bg-emerald-500/[0.11] px-2.5 py-1.5 space-y-0.5">
+                                <span className="block text-[9px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                  常用搭配 · Collocation
+                                </span>
+                                <div className="font-phonetic text-[11.5px] font-medium text-emerald-950 dark:text-emerald-100">
+                                  {v.usage}
+                                </div>
                               </div>
                             )}
+                            <div className="min-w-0 space-y-3 lg:col-span-2">
+                              <VocabularyDetails vocabulary={v} onSpeak={speak} />
+                            </div>
                           </CardContent>
                         </Card>
                       ))}
@@ -878,85 +951,108 @@ export default function App() {
 
                   {/* Tab 2: 句 (Pattern, Tense, Voice, Constituents & Grammar) */}
                   <TabsContent value="sentence" className="mt-4 space-y-4">
-                    {(
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                          <Card className="border-border/70 shadow-2xs">
-                            <CardHeader className="pb-1.5 pt-3.5">
-                              <CardDescription className="text-[10px] font-semibold uppercase tracking-wider">
-                                句子结构 · Pattern
-                              </CardDescription>
-                              <CardTitle className="text-xs font-semibold leading-snug">
-                                {analysis.sentenceAnatomy?.pattern || '暂无分析'}
-                              </CardTitle>
-                            </CardHeader>
-                          </Card>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <Card className="surface-card border-t-[3px] border-t-indigo-500 border-border/70 bg-indigo-500/[0.02] shadow-2xs">
+                        <CardHeader className="pb-2.5 pt-3.5">
+                          <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                            句子结构 · Pattern
+                          </CardDescription>
+                          <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
+                            {analysis.sentenceAnatomy?.pattern || '暂无分析'}
+                          </CardTitle>
+                        </CardHeader>
+                      </Card>
 
-                          <Card className="border-border/70 shadow-2xs">
-                            <CardHeader className="pb-1.5 pt-3.5">
-                              <CardDescription className="text-[10px] font-semibold uppercase tracking-wider">
-                                时态解析 · Tense
-                              </CardDescription>
-                              <CardTitle className="text-xs font-semibold leading-snug">
-                                {analysis.sentenceAnatomy?.tense || '暂无分析'}
-                              </CardTitle>
-                            </CardHeader>
-                          </Card>
+                      <Card className="surface-card border-t-[3px] border-t-amber-500 border-border/70 bg-amber-500/[0.02] shadow-2xs">
+                        <CardHeader className="pb-2.5 pt-3.5">
+                          <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                            时态解析 · Tense
+                          </CardDescription>
+                          <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
+                            {analysis.sentenceAnatomy?.tense || '暂无分析'}
+                          </CardTitle>
+                        </CardHeader>
+                      </Card>
 
-                          <Card className="border-border/70 shadow-2xs">
-                            <CardHeader className="pb-1.5 pt-3.5">
-                              <CardDescription className="text-[10px] font-semibold uppercase tracking-wider">
-                                语态解析 · Voice
-                              </CardDescription>
-                              <CardTitle className="text-xs font-semibold leading-snug">
-                                {analysis.sentenceAnatomy?.voice || '暂无分析'}
-                              </CardTitle>
-                            </CardHeader>
-                          </Card>
-                        </div>
-                      )}
+                      <Card className="surface-card border-t-[3px] border-t-emerald-500 border-border/70 bg-emerald-500/[0.02] shadow-2xs">
+                        <CardHeader className="pb-2.5 pt-3.5">
+                          <CardDescription className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                            语态解析 · Voice
+                          </CardDescription>
+                          <CardTitle className="text-xs font-semibold leading-relaxed text-foreground">
+                            {analysis.sentenceAnatomy?.voice || '暂无分析'}
+                          </CardTitle>
+                        </CardHeader>
+                      </Card>
+                    </div>
 
                     {analysis.sentenceAnatomy?.constituents &&
                       analysis.sentenceAnatomy.constituents.length > 0 && (
-                        <Card className="border-border/70 shadow-2xs">
+                        <Card className="surface-card border-border/70 shadow-2xs">
                           <CardHeader className="pb-3">
-                            <div className="flex items-center gap-1.5">
-                              <Layers className="h-3.5 w-3.5 text-muted-foreground" />
-                              <CardTitle className="text-sm font-semibold">
-                                句子组成成分拆解 · Sentence Constituents
-                              </CardTitle>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <Layers className="h-3.5 w-3.5 text-primary" />
+                                <CardTitle className="text-sm font-semibold">
+                                  句子组成成分分色拆解 · Sentence Constituents
+                                </CardTitle>
+                              </div>
+                              <span className="text-[11px] text-muted-foreground">
+                                不同语法角色采用独立色系标注
+                              </span>
                             </div>
                           </CardHeader>
-                          <CardContent className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                            {analysis.sentenceAnatomy.constituents.map((c, idx) => (
-                              <div
-                                key={idx}
-                                className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <Badge variant="secondary" className="text-[10px] font-medium">
-                                    {c.role}
-                                  </Badge>
+                          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            {analysis.sentenceAnatomy.constituents.map((c, idx) => {
+                              const cTheme = getConstituentTheme(c.role, idx);
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`rounded-xl border p-3.5 text-xs transition-all duration-200 ${cTheme.cardBorder} ${cTheme.cardBg}`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span
+                                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-bold ${cTheme.badge}`}
+                                    >
+                                      <span className={`h-1.5 w-1.5 rounded-full ${cTheme.dot}`} />
+                                      {c.role}
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                      onClick={() => speak(c.fragment)}
+                                      aria-label={`朗读片段 ${c.fragment}`}
+                                    >
+                                      <Volume2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                  <p className="mt-2 font-phonetic text-[13px] font-semibold text-foreground">
+                                    {c.fragment}
+                                  </p>
+                                  <p className={`mt-2 pl-2.5 leading-relaxed text-foreground/80 ${cTheme.explanationBorder}`}>
+                                    {c.explanation}
+                                  </p>
                                 </div>
-                                <p className="mt-2 font-mono text-xs font-semibold text-foreground">
-                                  {c.fragment}
-                                </p>
-                                <p className="mt-1 leading-relaxed text-muted-foreground">
-                                  {c.explanation}
-                                </p>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </CardContent>
                         </Card>
                       )}
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {analysis.grammar?.map((g, idx) => (
-                        <Card key={idx} className="border-border/70 shadow-2xs">
+                        <Card key={idx} className="surface-card border-l-[3px] border-l-cyan-500 border-border/70 shadow-2xs">
                           <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-semibold">{g.label}</CardTitle>
+                            <div className="flex items-center gap-2">
+                              <span className="rounded bg-cyan-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-cyan-700 dark:text-cyan-300">
+                                GRAMMAR 0{idx + 1}
+                              </span>
+                              <CardTitle className="text-sm font-semibold">{g.label}</CardTitle>
+                            </div>
                           </CardHeader>
                           <CardContent>
-                            <p className="text-xs leading-relaxed text-muted-foreground">
+                            <p className="text-xs leading-relaxed text-foreground/85">
                               {g.explanation}
                             </p>
                           </CardContent>
@@ -968,48 +1064,65 @@ export default function App() {
                   {/* Tab 3: 段 (Discourse Logic, Cohesion & Upgraded Paragraph) */}
                   <TabsContent value="discourse" className="mt-4 space-y-4">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <Card className="border-border/70 shadow-2xs">
+                      <Card className="surface-card border-t-[3px] border-t-sky-500 border-border/70 shadow-2xs">
                         <CardHeader className="pb-2">
                           <div className="flex items-center gap-1.5">
-                            <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+                            <GitBranch className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
                             <CardTitle className="text-sm font-semibold">
                               句群逻辑推进 · Discourse Logic
                             </CardTitle>
                           </div>
                         </CardHeader>
                         <CardContent>
-                          <p className="text-xs font-medium leading-relaxed text-foreground">
-                            {analysis.discourse?.logic || '暂无分析'}
-                          </p>
+                          <div className="rounded-lg border border-sky-500/20 bg-sky-500/[0.05] p-3">
+                            <p className="text-xs font-medium leading-relaxed text-foreground">
+                              {analysis.discourse?.logic || '暂无分析'}
+                            </p>
+                          </div>
                         </CardContent>
                       </Card>
 
-                      <Card className="border-border/70 shadow-2xs">
+                      <Card className="surface-card border-t-[3px] border-t-violet-500 border-border/70 shadow-2xs">
                         <CardHeader className="pb-2">
                           <div className="flex items-center gap-1.5">
-                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                            <FileText className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
                             <CardTitle className="text-sm font-semibold">
                               中英思维与成段转换 · Cohesion
                             </CardTitle>
                           </div>
                         </CardHeader>
                         <CardContent>
-                          <p className="text-xs leading-relaxed text-muted-foreground">
-                            {analysis.discourse?.cohesion || '暂无分析'}
-                          </p>
+                          <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.05] p-3">
+                            <p className="text-xs leading-relaxed text-foreground/85">
+                              {analysis.discourse?.cohesion || '暂无分析'}
+                            </p>
+                          </div>
                         </CardContent>
                       </Card>
                     </div>
 
+                    {analysis.notes && (
+                      <Card className="surface-card border-l-[3px] border-l-amber-500 border-border/70 bg-amber-500/[0.03] shadow-2xs">
+                        <CardHeader className="pb-1.5 pt-3.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                            交流场景与语用提示 · Pragmatic Register
+                          </span>
+                        </CardHeader>
+                        <CardContent className="pb-3.5">
+                          <p className="text-xs leading-relaxed text-foreground/85">{analysis.notes}</p>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     {analysis.discourse?.upgradedParagraph && (
-                      <Card className="border-border/70 shadow-2xs">
+                      <Card className="surface-card border-t-[3px] border-t-emerald-500 border-border/70 shadow-2xs">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                           <div>
                             <CardTitle className="text-sm font-semibold">
                               扩展练习 · Extended Paragraph
                             </CardTitle>
                             <CardDescription className="text-xs">
-                              扩展为 RFC / PR / 技术文档段落，可能引入额外设定；不是原文翻译。
+                              围绕原话题练习自然表达，可能引入假设情境；不是原文翻译。
                             </CardDescription>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -1033,14 +1146,16 @@ export default function App() {
                             </Button>
                           </div>
                         </CardHeader>
-                        <CardContent className="space-y-2.5 pt-2">
-                          <p className="text-sm font-medium leading-relaxed text-foreground">
+                        <CardContent className="space-y-3 pt-2">
+                          <p className="font-editorial text-[15px] font-medium leading-relaxed text-foreground">
                             {analysis.discourse.upgradedParagraph}
                           </p>
                           {analysis.discourse.upgradedChinese && (
-                            <p className="text-xs leading-relaxed text-muted-foreground">
-                              {analysis.discourse.upgradedChinese}
-                            </p>
+                            <div className="rounded-r-lg border-l-[3px] border-emerald-500/60 bg-emerald-500/[0.06] px-3 py-2">
+                              <p className="text-xs leading-relaxed text-foreground/85">
+                                {analysis.discourse.upgradedChinese}
+                              </p>
+                            </div>
                           )}
                         </CardContent>
                       </Card>
@@ -1049,18 +1164,23 @@ export default function App() {
 
                   {/* Tab 4: Practice Examples */}
                   <TabsContent value="examples" className="mt-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {analysis.examples?.map((ex, idx) => (
-                        <Card key={idx} className="border-border/70 shadow-2xs">
+                        <Card key={idx} className="surface-card border-border/70 shadow-2xs">
                           <CardHeader className="pb-2">
                             <div className="flex items-start justify-between gap-2">
-                              <CardTitle className="text-sm font-medium leading-snug">
-                                {ex.english}
-                              </CardTitle>
+                              <div className="space-y-1.5">
+                                <span className="inline-block rounded bg-teal-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                                  EXAMPLE 0{idx + 1}
+                                </span>
+                                <CardTitle className="font-editorial text-[15px] font-semibold leading-snug text-foreground">
+                                  {ex.english}
+                                </CardTitle>
+                              </div>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-7 w-7 shrink-0 text-muted-foreground"
+                                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary"
                                 aria-label={`朗读例句 ${ex.english}`}
                                 onClick={() => speak(ex.english)}
                               >
@@ -1069,7 +1189,13 @@ export default function App() {
                             </div>
                           </CardHeader>
                           <CardContent>
-                            <p className="text-xs text-muted-foreground">{ex.chinese}</p>
+                            <p className="rounded-r-md border-l-2 border-teal-500/50 bg-teal-500/[0.05] pl-2.5 py-1 text-xs leading-relaxed text-foreground/85">
+                              {ex.chinese}
+                            </p>
+                            <div className="mt-2 space-y-1">
+                              {ex.note && <p className="text-pretty text-xs leading-relaxed text-muted-foreground">{ex.note}</p>}
+                              <ExampleAttribution example={ex} />
+                            </div>
                           </CardContent>
                         </Card>
                       ))}
@@ -1100,7 +1226,7 @@ export default function App() {
           )
         ) : (
           /* Lexicon / Knowledge Base View */
-          <div className="mx-auto max-w-4xl space-y-6 px-10 py-10">
+          <div className="animate-stage-in mx-auto w-full max-w-[1600px] space-y-6 px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-xl font-semibold tracking-tight">Personal Lexicon</h1>
@@ -1111,38 +1237,60 @@ export default function App() {
               <Badge variant="outline">{filteredKnowledge.length} items</Badge>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredKnowledge.map((item) => (
-                <Card key={item.id} className="border-border/70 shadow-2xs">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <Badge variant="secondary" className="text-[10px] font-normal capitalize">
-                        {item.category}
-                      </Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        {item.encounters}× seen
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between pt-2">
-                      <CardTitle className="text-base font-semibold">{item.term}</CardTitle>
-                      {item.category === 'vocabulary' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground"
-                          aria-label={`朗读 ${item.term}`}
-                          onClick={() => speak(item.term)}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+              {filteredKnowledge.map((item) => {
+                const isVocab = item.category === 'vocabulary';
+                return (
+                  <Card
+                    key={item.id}
+                    className={`surface-card border-t-[3px] border-border/70 shadow-2xs ${
+                      isVocab ? 'border-t-indigo-500' : 'border-t-violet-500'
+                    }`}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold capitalize ${
+                            isVocab
+                              ? 'border-indigo-500/25 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300'
+                              : 'border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+                          }`}
                         >
-                          <Volume2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs leading-relaxed text-muted-foreground">{item.meaning}</p>
-                  </CardContent>
-                </Card>
-              ))}
+                          {item.category}
+                        </span>
+                        <span className="font-phonetic text-[11px] text-muted-foreground">
+                          {item.encounters}× seen
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2">
+                        <CardTitle className="font-editorial text-base font-bold">{item.term}</CardTitle>
+                        {isVocab && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            aria-label={`朗读 ${item.term}`}
+                            onClick={() => speak(item.term)}
+                          >
+                            <Volume2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <p
+                        className={`rounded-r-md border-l-2 pl-2.5 py-1 text-xs leading-relaxed text-foreground/85 ${
+                          isVocab
+                            ? 'border-indigo-500/50 bg-indigo-500/[0.04]'
+                            : 'border-violet-500/50 bg-violet-500/[0.04]'
+                        }`}
+                      >
+                        {item.meaning}
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1152,7 +1300,9 @@ export default function App() {
         <AlertDialogContent aria-busy={busy}>
           <AlertDialogTitle className="text-base font-semibold text-balance">删除提示卡片？</AlertDialogTitle>
           <AlertDialogDescription className="text-sm text-muted-foreground text-pretty">默认只删除此卡片，保留已积累的词汇与语法。此操作不可撤销。</AlertDialogDescription>
-          <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={purgeKnowledge} disabled={busy} onChange={(e) => setPurgeKnowledge(e.target.checked)} />同时删除此提示关联的派生知识（其他提示共享或此前明确保留的知识仍会保留）</label>
+          <StyledCheckbox checked={purgeKnowledge} disabled={busy} onChange={setPurgeKnowledge}>
+            同时删除此提示关联的派生知识（其他提示共享或此前明确保留的知识仍会保留）
+          </StyledCheckbox>
           {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
           <div className="flex justify-end gap-2"><AlertDialogCancel asChild><Button variant="outline" disabled={busy}>取消</Button></AlertDialogCancel><Button variant="destructive" disabled={busy} onClick={() => deleteTarget && handleDelete(deleteTarget)}>{busy ? '删除中…' : purgeKnowledge ? '删除卡片及关联知识' : '只删除卡片'}</Button></div>
         </AlertDialogContent>
@@ -1223,9 +1373,9 @@ export default function App() {
                 />
                 <p id="project-path-hint" className="text-muted-foreground">项目须填写本地绝对目录，每行一个。排除名单优先；仅允许名单模式会拒绝未知项目。</p>
                 <label htmlFor="allowed-projects" className="block font-medium">允许的项目目录</label>
-                <textarea id="allowed-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.allowedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, allowedProjects: e.target.value.split('\n') })} className="w-full rounded-md border bg-background p-2 font-mono" />
+                <textarea id="allowed-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.allowedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, allowedProjects: e.target.value.split('\n') })} className="ui-textarea" />
                 <label htmlFor="excluded-projects" className="block font-medium">排除的项目目录</label>
-                <textarea id="excluded-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.excludedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, excludedProjects: e.target.value.split('\n') })} className="w-full rounded-md border bg-background p-2 font-mono" />
+                <textarea id="excluded-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.excludedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, excludedProjects: e.target.value.split('\n') })} className="ui-textarea" />
               </>}
             </div>
             <Separator />
@@ -1355,10 +1505,17 @@ export default function App() {
                           }
                           className="h-8 text-xs font-mono"
                         />
-                        {editingModel.id && <label className="flex items-center gap-2 text-xs">
-                          <input type="checkbox" checked={!!editingModel.clearApiKey} disabled={busy} onChange={(e) => setEditingModel({ ...editingModel, clearApiKey: e.target.checked, apiKey: '' })} />
-                          清除已保存密钥（点击底部「确定」后生效）
-                        </label>}
+                        {editingModel.id && (
+                          <StyledCheckbox
+                            checked={!!editingModel.clearApiKey}
+                            disabled={busy}
+                            onChange={(checked) =>
+                              setEditingModel({ ...editingModel, clearApiKey: checked, apiKey: '' })
+                            }
+                          >
+                            清除已保存密钥（点击底部「确定」后生效）
+                          </StyledCheckbox>
+                        )}
                         {editingModel.id && editingModel.baseUrl.trim().replace(/\/+$/, '') !== modelDraft.models.find((m) => m.id === editingModel.id)?.baseUrl.replace(/\/+$/, '') && <p id="provider-key-hint" className="text-xs text-muted-foreground">Provider Base URL 已更改，须重新输入密钥，或明确选择清除密钥。旧密钥不会发送给新 Provider。</p>}
                         <span className="text-[10px] text-muted-foreground">
                           密钥提交后保存在本地受限权限文件中；读取配置只返回掩码，不返回完整密钥。

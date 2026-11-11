@@ -248,8 +248,13 @@ export const Select = React.forwardRef<HTMLButtonElement, SelectProps>(
             className,
           )}
         >
-          <span className={cn("truncate", !selectedOption && "text-muted-foreground/70")}>
-            {selectedOption?.label ?? placeholder}
+          <span className={cn("flex min-w-0 flex-1 items-center gap-2 truncate", !selectedOption && "text-muted-foreground/70")}>
+            <span className="font-medium text-foreground">{selectedOption?.label ?? placeholder}</span>
+            {selectedOption?.description && (
+              <span className="truncate text-[11px] text-muted-foreground">
+                · {selectedOption.description}
+              </span>
+            )}
           </span>
           <ChevronDown
             className={cn(

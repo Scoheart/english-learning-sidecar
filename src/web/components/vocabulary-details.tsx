@@ -1,0 +1,165 @@
+import React from 'react';
+import { Volume2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+export interface LearningExample {
+  english: string;
+  chinese: string;
+  note?: string;
+  source?: {
+    kind: 'ai' | 'reference';
+    title?: string;
+    url?: string;
+    verification?: 'unverified' | 'not_applicable';
+  };
+}
+
+interface WordSense {
+  pos: string;
+  meaning: string;
+  example?: LearningExample | null;
+}
+
+interface RelatedWord extends WordSense {
+  term: string;
+  phonetic?: string;
+  relationship?: string;
+  difference?: string;
+}
+
+export interface VocabularyItem {
+  term: string;
+  phonetic?: string;
+  pos?: string;
+  meaning: string;
+  morphology?: string;
+  usage?: string;
+  nuance?: string;
+  senses?: WordSense[];
+  wordFamily?: RelatedWord[];
+  synonyms?: RelatedWord[];
+  antonyms?: RelatedWord[];
+  examples?: LearningExample[];
+}
+
+function referenceUrl(value?: string) {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
+      ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function ExampleAttribution({ example }: { example: LearningExample }) {
+  const source = example.source;
+  const url = source?.kind === 'reference' ? referenceUrl(source.url) : undefined;
+  return (
+    <p className="break-words text-pretty text-[11px] leading-relaxed text-muted-foreground">
+      {source?.kind === 'ai' ? 'AI 原创例句' : source?.kind === 'reference' ? (
+        <>
+          引用来源待核实{source.title ? ` · ${source.title}` : ''}
+          {url && <> · <a href={url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">查看出处</a></>}
+        </>
+      ) : '来源未记录'}
+    </p>
+  );
+}
+
+export function VocabularyExample({ example, onSpeak }: { example: LearningExample; onSpeak: (text: string) => void }) {
+  return (
+    <div className="space-y-1 border-l-2 border-border pl-2.5">
+      <div className="flex items-start gap-1">
+        <p lang="en" className="min-w-0 flex-1 break-words text-pretty text-xs leading-relaxed text-foreground">{example.english}</p>
+        <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`朗读例句 ${example.english}`} onClick={() => onSpeak(example.english)}>
+          <Volume2 aria-hidden="true" className="size-3.5" />
+        </Button>
+      </div>
+      <p className="break-words text-pretty text-xs leading-relaxed text-muted-foreground">{example.chinese}</p>
+      {example.note && <p className="break-words text-pretty text-xs leading-relaxed text-muted-foreground">{example.note}</p>}
+      <ExampleAttribution example={example} />
+    </div>
+  );
+}
+
+function WordList({ words, onSpeak, contrast = false }: { words: RelatedWord[]; onSpeak: (text: string) => void; contrast?: boolean }) {
+  return (
+    <ul className="space-y-3">
+      {words.map((word, index) => (
+        <li key={`${word.term}-${index}`} className="min-w-0 space-y-1.5">
+          <div className="flex items-start gap-1">
+            <div className="min-w-0 flex-1 break-words text-pretty leading-relaxed">
+              <span lang="en" className="font-semibold text-foreground">{word.term}</span>
+              {word.phonetic && <span className="ml-1.5 font-phonetic text-[11px] text-muted-foreground">{word.phonetic}</span>}
+              {word.pos && <span className="ml-1.5 font-medium text-muted-foreground">{word.pos}</span>}
+              <span className="ml-1.5 text-foreground/85">{word.meaning}</span>
+            </div>
+            <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`朗读 ${word.term}`} onClick={() => onSpeak(word.term)}>
+              <Volume2 aria-hidden="true" className="size-3.5" />
+            </Button>
+          </div>
+          {word.relationship && <p className="break-words text-pretty leading-relaxed text-muted-foreground">{word.relationship}</p>}
+          {contrast && word.difference && <p className="break-words text-pretty leading-relaxed text-foreground/85"><span className="font-medium">区别：</span>{word.difference}</p>}
+          {word.example && <VocabularyExample example={word.example} onSpeak={onSpeak} />}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function VocabularyDetails({ vocabulary, onSpeak }: { vocabulary: VocabularyItem; onSpeak: (text: string) => void }) {
+  const senses = vocabulary.senses ?? [];
+  const family = vocabulary.wordFamily ?? [];
+  const examples = vocabulary.examples ?? [];
+  const hasRelations = vocabulary.synonyms !== undefined || vocabulary.antonyms !== undefined;
+  return (
+    <>
+      {senses.length > 0 && (
+        <section aria-label={`${vocabulary.term} 的词性与释义`} className="space-y-2 border-t border-border/60 pt-2.5">
+          <p className="text-balance text-xs font-semibold text-foreground">词性与释义</p>
+          <ul className="space-y-3">
+            {senses.map((sense, index) => (
+              <li key={index} className="space-y-1.5">
+                <p className="break-words text-pretty leading-relaxed"><span className="mr-1.5 font-semibold text-muted-foreground">{sense.pos}</span>{sense.meaning}</p>
+                {sense.example && <VocabularyExample example={sense.example} onSpeak={onSpeak} />}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {examples.length > 0 && (
+        <section aria-label={`${vocabulary.term} 的用法例句`} className="space-y-2">
+          <p className="text-balance text-xs font-semibold text-foreground">用法例句</p>
+          {examples.map((example, index) => <VocabularyExample key={index} example={example} onSpeak={onSpeak} />)}
+        </section>
+      )}
+      {family.length > 0 && (
+        <section aria-label={`${vocabulary.term} 的同源词派生`} className="space-y-2 border-t border-border/60 pt-2.5">
+          <p className="text-balance text-xs font-semibold text-foreground">同源词派生 · Word Family</p>
+          <WordList words={family} onSpeak={onSpeak} />
+        </section>
+      )}
+      {hasRelations && (
+        <Tabs key={vocabulary.term} defaultValue="synonyms" className="min-w-0 border-t border-border/60 pt-2.5">
+          <TabsList aria-label={`${vocabulary.term} 的同反义词`} className="h-8 max-w-full">
+            <TabsTrigger value="synonyms" className="px-2.5 text-xs">同义词</TabsTrigger>
+            <TabsTrigger value="antonyms" className="px-2.5 text-xs">反义词</TabsTrigger>
+          </TabsList>
+          <TabsContent value="synonyms" className="mt-3 animate-none">
+            {(vocabulary.synonyms?.length ?? 0) > 0
+              ? <WordList words={vocabulary.synonyms!} onSpeak={onSpeak} contrast />
+              : <p className="text-pretty text-xs leading-relaxed text-muted-foreground">暂无适合当前词义的同义词；可先结合例句理解用法。</p>}
+          </TabsContent>
+          <TabsContent value="antonyms" className="mt-3 animate-none">
+            {(vocabulary.antonyms?.length ?? 0) > 0
+              ? <WordList words={vocabulary.antonyms!} onSpeak={onSpeak} contrast />
+              : <p className="text-pretty text-xs leading-relaxed text-muted-foreground">暂无适合当前词义的直接反义词；可先结合例句理解用法。</p>}
+          </TabsContent>
+        </Tabs>
+      )}
+    </>
+  );
+}
