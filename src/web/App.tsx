@@ -261,6 +261,15 @@ export default function App() {
     return () => stream.close();
   }, []);
 
+  const queueRunning = status?.mode === 'live' && !status.paused
+    && (status.stats.pending > 0 || events.some(event => event.status === 'pending' || event.status === 'processing'));
+  useEffect(() => {
+    if (!queueRunning) return;
+    // Recover a completed lesson if the browser misses a stream update.
+    const timer = window.setInterval(refreshData, 5000);
+    return () => window.clearInterval(timer);
+  }, [queueRunning]);
+
   const activeTextModel = useMemo(() => {
     return models.find((m) => m.id === activeTextId && m.kind === 'text') || status?.activeTextModel || null;
   }, [models, activeTextId, status]);
