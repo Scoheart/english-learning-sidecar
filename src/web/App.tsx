@@ -508,6 +508,7 @@ export default function App() {
   const vocabularyCount = analysis?.vocabulary?.length ?? 0;
   const grammarCount = analysis?.grammar?.length ?? 0;
   const exampleCount = analysis?.examples?.length ?? 0;
+  const constituentCount = analysis?.sentenceAnatomy?.constituents?.length ?? 0;
   const lexisGridClass =
     vocabularyCount >= 4
       ? 'sm:grid-cols-2 xl:grid-cols-4'
@@ -516,6 +517,12 @@ export default function App() {
         : vocabularyCount === 2
           ? 'sm:grid-cols-2'
           : 'grid-cols-1';
+  const grammarGridClass =
+    grammarCount >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : grammarCount === 2 ? 'sm:grid-cols-2' : 'grid-cols-1';
+  const exampleGridClass =
+    exampleCount >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : exampleCount === 2 ? 'sm:grid-cols-2' : 'grid-cols-1';
+  const constituentGridClass =
+    constituentCount >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : constituentCount === 2 ? 'sm:grid-cols-2' : 'grid-cols-1';
   const singleVocabularyCard = vocabularyCount === 1;
 
   return (
@@ -773,67 +780,148 @@ export default function App() {
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-4 pt-2">
-                  <p className="whitespace-pre-wrap break-words text-pretty font-editorial text-2xl font-semibold leading-[1.4] tracking-tight text-foreground sm:text-[27px]">
-                    {selectedEvent.content}
-                  </p>
+                <CardContent className="pt-2">
+                  <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)] xl:gap-8">
+                    {/* Primary column: the English output, sentence map and takeaways */}
+                    <div className="min-w-0 space-y-4">
+                      {analysis ? (
+                        <>
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+                            English Translation · 英文翻译
+                          </div>
+                          <p className="whitespace-pre-wrap break-words text-pretty font-editorial text-2xl font-semibold leading-[1.4] tracking-tight text-foreground sm:text-[27px]">
+                            {cleanHeroEnglish}
+                          </p>
 
-                  {analysis ? (
-                    <p className="whitespace-pre-wrap break-words text-pretty font-editorial text-2xl font-semibold leading-[1.4] tracking-tight text-foreground sm:text-[27px]">
-                      {cleanHeroEnglish}
-                    </p>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">
-                      {needsModelSetup && selectedEvent.status === 'pending'
-                        ? '等待接入模型：此提示已加入队列。请先接入并启用带有 API Key 的文本模型，之后会自动处理；缺少密钥时不会生成内容。'
-                        : selectedEvent.error || (selectedEvent.status === 'cancelled' ? '分析已取消，可点击 Retry 重试。' : selectedEvent.status === 'skipped' ? '此提示未分析。' : selectedEvent.status === 'failed' ? '分析失败，请重试。' : selectedEvent.status === 'pending' ? '提示已排队，将在后台自动处理。' : 'Analyzing prompt in the background...')}
-                    </div>
-                  )}
+                          {analysis.sentenceAnatomy?.constituents &&
+                            analysis.sentenceAnatomy.constituents.length > 0 && (
+                              <div className="space-y-1.5 pt-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  句法成分色标分解 · Syntactic Color Map
+                                </span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {analysis.sentenceAnatomy.constituents.map((c, idx) => {
+                                    const themeStyle = getConstituentTheme(c.role, idx);
+                                    return (
+                                      <span
+                                        key={idx}
+                                        title={c.explanation}
+                                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ${themeStyle.fragmentPill}`}
+                                      >
+                                        <span className={`h-1.5 w-1.5 rounded-full ${themeStyle.dot}`} />
+                                        <span className="text-[10px] font-semibold opacity-80">{c.role}</span>
+                                        <span className="font-phonetic font-semibold">{c.fragment}</span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
 
-                  {/* Color-Annotated Inline Refinement Comparison */}
-                  {analysis?.corrections?.map((correction, index) => {
-                    const isStyle = correction.kind === 'style';
-                    return (
-                      <div
-                        key={index}
-                        className={`rounded-xl border px-4 py-3.5 text-xs transition-all duration-200 ${
-                          isStyle
-                            ? 'border-violet-500/25 bg-violet-500/[0.04] dark:bg-violet-500/[0.08]'
-                            : 'border-amber-500/25 bg-amber-500/[0.04] dark:bg-amber-500/[0.08]'
-                        }`}
-                      >
-                        <div className="mb-2 flex items-center gap-2">
-                          <span
-                            className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${
+                          {analysis.summary && (
+                            <div className="flex items-start gap-2.5 rounded-xl border border-indigo-500/20 bg-indigo-500/[0.05] px-3.5 py-2.5 text-xs dark:bg-indigo-500/[0.09]">
+                              <span className="mt-0.5 shrink-0 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                                核心要点
+                              </span>
+                              <p className="leading-relaxed text-foreground/90">{analysis.summary}</p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          {needsModelSetup && selectedEvent.status === 'pending'
+                            ? '等待接入模型：此提示已加入队列。请先接入并启用带有 API Key 的文本模型，之后会自动处理；缺少密钥时不会生成内容。'
+                            : selectedEvent.error || (selectedEvent.status === 'cancelled' ? '分析已取消，可点击 Retry 重试。' : selectedEvent.status === 'skipped' ? '此提示未分析。' : selectedEvent.status === 'failed' ? '分析失败，请重试。' : selectedEvent.status === 'pending' ? '提示已排队，将在后台自动处理。' : 'Analyzing prompt in the background...')}
+                        </div>
+                      )}
+
+                      {/* Color-Annotated Inline Refinement Comparison */}
+                      {analysis?.corrections?.map((correction, index) => {
+                        const isStyle = correction.kind === 'style';
+                        return (
+                          <div
+                            key={index}
+                            className={`rounded-xl border px-4 py-3.5 text-xs transition-all duration-200 ${
                               isStyle
-                                ? 'border-violet-500/30 bg-violet-500/15 text-violet-800 dark:text-violet-200'
-                                : 'border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                                ? 'border-violet-500/25 bg-violet-500/[0.04] dark:bg-violet-500/[0.08]'
+                                : 'border-amber-500/25 bg-amber-500/[0.04] dark:bg-amber-500/[0.08]'
                             }`}
                           >
-                            {isStyle
-                              ? '风格升格 · Style Upgrade（不表示原句有错）'
-                              : correction.kind === 'correction'
-                                ? '语言纠错 · Grammar & Lexical Fix'
-                                : '表达对比 · Expression Refinement'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-md border border-rose-500/25 bg-rose-500/10 px-2.5 py-1 font-phonetic text-xs text-rose-800 dark:text-rose-200">
-                            {correction.before}
-                          </span>
-                          <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                          <span className="rounded-md border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1 font-phonetic text-xs font-semibold text-emerald-800 dark:text-emerald-200">
-                            {correction.after}
-                          </span>
-                        </div>
-                        {correction.reason && (
-                          <p className="mt-2 border-l-2 border-border pl-2.5 leading-relaxed text-muted-foreground">
-                            {correction.reason}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                            <div className="mb-2 flex items-center gap-2">
+                              <span
+                                className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${
+                                  isStyle
+                                    ? 'border-violet-500/30 bg-violet-500/15 text-violet-800 dark:text-violet-200'
+                                    : 'border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                                }`}
+                              >
+                                {isStyle
+                                  ? '风格升格 · Style Upgrade（不表示原句有错）'
+                                  : correction.kind === 'correction'
+                                    ? '语言纠错 · Grammar & Lexical Fix'
+                                    : '表达对比 · Expression Refinement'}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-md border border-rose-500/25 bg-rose-500/10 px-2.5 py-1 font-phonetic text-xs text-rose-800 dark:text-rose-200">
+                                {correction.before}
+                              </span>
+                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                              <span className="rounded-md border border-emerald-500/30 bg-emerald-500/12 px-2.5 py-1 font-phonetic text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                                {correction.after}
+                              </span>
+                            </div>
+                            {correction.reason && (
+                              <p className="mt-2 border-l-2 border-border pl-2.5 leading-relaxed text-muted-foreground">
+                                {correction.reason}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Side rail: source prompt and a compact coverage summary */}
+                    <div className="min-w-0 space-y-3 xl:border-l xl:border-border/60 xl:pl-6">
+                      <section
+                        aria-labelledby="original-prompt-heading"
+                        className="rounded-xl border border-border/60 bg-muted/25 px-4 py-3"
+                      >
+                        <h2
+                          id="original-prompt-heading"
+                          className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                        >
+                          Original Prompt · 原始输入
+                        </h2>
+                        <p className="whitespace-pre-wrap break-words text-pretty text-sm leading-relaxed text-foreground">
+                          {selectedEvent.content}
+                        </p>
+                      </section>
+
+                      {analysis && (
+                        <section className="rounded-xl border border-border/60 bg-card/60 px-4 py-3">
+                          <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            本次学习覆盖 · Coverage
+                          </h2>
+                          <div className="mt-2.5 grid grid-cols-3 gap-2">
+                            {[
+                              { label: '词汇', value: vocabularyCount },
+                              { label: '语法', value: grammarCount },
+                              { label: '例句', value: exampleCount },
+                            ].map((item) => (
+                              <div key={item.label} className="rounded-lg bg-muted/45 px-2 py-2 text-center">
+                                <div className="font-editorial text-lg font-semibold leading-none text-foreground">
+                                  {item.value}
+                                </div>
+                                <div className="mt-1 text-[10px] text-muted-foreground">{item.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -1002,7 +1090,7 @@ export default function App() {
                               </span>
                             </div>
                           </CardHeader>
-                          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <CardContent className={`grid gap-3 ${constituentGridClass}`}>
                             {analysis.sentenceAnatomy.constituents.map((c, idx) => {
                               const cTheme = getConstituentTheme(c.role, idx);
                               return (
@@ -1040,9 +1128,14 @@ export default function App() {
                         </Card>
                       )}
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className={`grid gap-4 ${grammarGridClass}`}>
                       {analysis.grammar?.map((g, idx) => (
-                        <Card key={idx} className="surface-card border-l-[3px] border-l-cyan-500 border-border/70 shadow-2xs">
+                        <Card
+                          key={idx}
+                          className={`surface-card border-l-[3px] border-l-cyan-500 border-border/70 shadow-2xs ${
+                            grammarCount === 1 ? 'md:grid md:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)] md:items-start md:gap-6' : ''
+                          }`}
+                        >
                           <CardHeader className="pb-2">
                             <div className="flex items-center gap-2">
                               <span className="rounded bg-cyan-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-cyan-700 dark:text-cyan-300">
@@ -1051,7 +1144,7 @@ export default function App() {
                               <CardTitle className="text-sm font-semibold">{g.label}</CardTitle>
                             </div>
                           </CardHeader>
-                          <CardContent>
+                          <CardContent className={grammarCount === 1 ? 'md:pt-6' : undefined}>
                             <p className="text-xs leading-relaxed text-foreground/85">
                               {g.explanation}
                             </p>
@@ -1164,9 +1257,14 @@ export default function App() {
 
                   {/* Tab 4: Practice Examples */}
                   <TabsContent value="examples" className="mt-4">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className={`grid gap-4 ${exampleGridClass}`}>
                       {analysis.examples?.map((ex, idx) => (
-                        <Card key={idx} className="surface-card border-border/70 shadow-2xs">
+                        <Card
+                          key={idx}
+                          className={`surface-card border-border/70 shadow-2xs ${
+                            exampleCount === 1 ? 'md:grid md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] md:items-start md:gap-6' : ''
+                          }`}
+                        >
                           <CardHeader className="pb-2">
                             <div className="flex items-start justify-between gap-2">
                               <div className="space-y-1.5">
@@ -1188,7 +1286,7 @@ export default function App() {
                               </Button>
                             </div>
                           </CardHeader>
-                          <CardContent>
+                          <CardContent className={exampleCount === 1 ? 'md:pt-6' : undefined}>
                             <p className="rounded-r-md border-l-2 border-teal-500/50 bg-teal-500/[0.05] pl-2.5 py-1 text-xs leading-relaxed text-foreground/85">
                               {ex.chinese}
                             </p>
