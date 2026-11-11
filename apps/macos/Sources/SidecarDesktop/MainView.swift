@@ -5,10 +5,10 @@ import SidecarCore
 struct MainView: View {
     @ObservedObject var store: DesktopStore
     @Environment(\.openWindow) private var openWindow
-    @State private var query = ""
-    private var filtered: [Lesson] {
-        store.lessons.filter { query.isEmpty || "\($0.content) \($0.analysis?.translation ?? "") \($0.sourceName)".localizedCaseInsensitiveContains(query) }
-    }
+    private var filtered: [Lesson] { store.filteredLessons }
+    private var agents: [AgentOption] { LessonHistory.agents(in: store.lessons) }
+    private var hasFilters: Bool { !store.historyAgent.isEmpty || !store.historyQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 18) {
@@ -38,47 +38,46 @@ struct MainView: View {
                         Spacer(); SettingsLink { Text("配置模型") }
                     }.font(.callout).padding(12).background(Color.primary.opacity(0.04))
                 }
-                if store.section == "knowledge" { KnowledgeView(store: store, query: query) }
+                if store.section == "knowledge" { KnowledgeView(store: store, query: store.historyQuery) }
                 else {
                     HSplitView {
                         VStack(spacing: 0) {
-                            HStack {
-                                Text("学习记录").font(.headline)
-                                Spacer(); Text("\(filtered.count)").foregroundStyle(.secondary)
-                            }.padding()
+                            historyHeader
                             Divider()
-                            List(selection: $store.selectedID) {
-                                ForEach(filtered) { lesson in
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack {
-                                            Text(lesson.sourceName).font(.caption).foregroundStyle(.secondary)
-                                            Spacer()
-                                            if lesson.status == "complete" && !store.readIDs.contains(lesson.id) {
-                                                Image(systemName: "circle.fill").font(.system(size: 5)).accessibilityLabel("未读")
+                            if filtered.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle" : "text.book.closed").font(.title2)
+                                    Text(hasFilters ? "没有匹配的记录" : "等待你的下一次提问").font(.callout)
+                                    if hasFilters { Button("清除筛选") { store.clearHistoryFilters() } }
+                                }.foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity).padding()
+                            } else {
+                                List(selection: $store.selectedID) {
+                                    ForEach(filtered) { lesson in
+                                        HistoryRow(lesson: lesson, unread: lesson.status == "complete" && !store.readIDs.contains(lesson.id))
+                                            .tag(lesson.id)
+                                            .contextMenu {
+                                                Button("复制原文") {
+                                                    NSPasteboard.general.clearContents()
+                                                    NSPasteboard.general.setString(lesson.content, forType: .string)
+                                                }
                                             }
-                                        }
-                                        Text(lesson.analysis?.translation ?? lesson.content).font(.system(size: 13, weight: .medium)).lineLimit(2)
-                                        HStack {
-                                            Text(statusLabel(lesson.status))
-                                            Spacer()
-                                            if let date = lesson.date { Text(date, style: .time) }
-                                        }.font(.caption2).foregroundStyle(.secondary)
-                                    }.padding(.vertical, 6).tag(lesson.id)
-                                }
-                            }.listStyle(.inset)
-                            if filtered.isEmpty { Text(query.isEmpty ? "等待你的下一次提问" : "没有匹配的记录").font(.callout).foregroundStyle(.secondary).padding() }
-                        }.frame(minWidth: 220, idealWidth: 280, maxWidth: 350)
+                                    }
+                                }.listStyle(.inset)
+                            }
+                            Text("原文 · 当前加载最近最多 150 条")
+                                .font(.caption2).foregroundStyle(.tertiary).padding(8)
+                        }.frame(minWidth: 230, idealWidth: 300, maxWidth: 380)
                         if let lesson = store.selectedLesson {
                             LessonDetail(store: store, lesson: lesson).id(lesson.id).frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
                         } else {
-                            ContentUnavailableView("把日常提问变成学习素材", systemImage: "text.book.closed", description: Text("选择左侧记录查看英文表达、词汇、句法和例句。\n通过设置安装 Agent Hook 后，新记录会自动出现。"))
+                            ContentUnavailableView("把日常提问变成学习素材", systemImage: "text.book.closed", description: Text("选择左侧原文查看英文表达、词汇、句法和例句。\n可按来源 Agent 筛选，也可搜索原文或英文。"))
                                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
                         }
                     }
                 }
             }
         }
-        .searchable(text: $query, placement: .toolbar, prompt: "搜索英文、原句或来源")
+        .searchable(text: $store.historyQuery, placement: .toolbar, prompt: "搜索原文、英文或来源")
         .toolbar {
             ToolbarItemGroup {
                 Button { Task { await store.refresh() } } label: { Image(systemName: "arrow.clockwise") }.help("刷新")
@@ -92,7 +91,47 @@ struct MainView: View {
             Button("好", role: .cancel) { store.lastError = nil }
         } message: { Text(store.lastError ?? "") }
     }
+
+    private var historyHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("学习记录").font(.headline)
+                Spacer()
+                Text(hasFilters ? "\(filtered.count) / \(store.lessons.count)" : "\(store.lessons.count)")
+                    .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                    .accessibilityLabel("筛选后 \(filtered.count) 条，已加载 \(store.lessons.count) 条")
+            }
+            Picker("来源 Agent", selection: $store.historyAgent) {
+                Text("全部 Agent · \(store.lessons.count)").tag("")
+                ForEach(agents) { agent in Text("\(agent.name) · \(agent.count)").tag(agent.id) }
+                if !store.historyAgent.isEmpty && !agents.contains(where: { $0.id == store.historyAgent }) {
+                    Text("\(LessonHistory.sourceName(store.historyAgent)) · 0").tag(store.historyAgent)
+                }
+            }.pickerStyle(.menu).labelsHidden().accessibilityLabel("按来源 Agent 筛选")
+        }.padding()
+    }
 }
+
+private struct HistoryRow: View {
+    let lesson: Lesson
+    let unread: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(verbatim: LessonHistory.sourceName(lesson.source)).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if unread { Image(systemName: "circle.fill").font(.system(size: 5)).accessibilityLabel("未读") }
+            }
+            Text(verbatim: LessonHistory.originalText(lesson)).font(.system(size: 13, weight: .medium))
+                .lineLimit(3).help(lesson.content)
+            HStack {
+                Text(statusLabel(lesson.status)); Spacer()
+                if let date = lesson.date { Text(date, style: .time) }
+            }.font(.caption2).foregroundStyle(.secondary)
+        }.padding(.vertical, 6).accessibilityElement(children: .combine)
+    }
+}
+
 struct EngineStartButton: View {
     @ObservedObject var store: DesktopStore
     @ObservedObject var engine: EngineManager

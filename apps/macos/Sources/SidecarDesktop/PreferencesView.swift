@@ -30,7 +30,11 @@ private struct GeneralPreferences: View {
                     Text("主显示器").tag("primary")
                     ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { _, screen in Text(screen.localizedName).tag(displayID(screen)) }
                 }
-                Text("胶囊显示在菜单栏下方；支持无刘海和外接显示器。隐藏小岛不会停止采集。").font(.caption).foregroundStyle(.secondary)
+                Picker("学习岛样式", selection: $store.islandPresentation) {
+                    ForEach(IslandPresentationMode.allCases, id: \.self) { mode in Text(mode.label).tag(mode) }
+                }
+                Text("使用 DynamicNotchKit。默认贴顶刘海；无刘海显示器也可选择贴顶，或切换为浮动胶囊。隐藏小岛不会停止采集。")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("本地学习服务") {
                 HStack {

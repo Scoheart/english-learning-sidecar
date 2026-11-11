@@ -4,13 +4,23 @@ import SidecarCore
 
 @MainActor final class DesktopStore: ObservableObject {
     @Published var status: Status?
-    @Published var lessons: [Lesson] = []
+    @Published var lessons: [Lesson] = [] { didSet { reconcileHistorySelection() } }
     @Published var knowledge: [Knowledge] = []
     @Published var models: [SafeModel] = []
     @Published var activeTextID: String?
     @Published var activeSpeechID: String?
     @Published var selectedID: String?
     @Published var section: String? = "feed"
+    @Published var historyQuery = "" { didSet { reconcileHistorySelection() } }
+    @Published var historyAgent = UserDefaults.standard.string(forKey: "native.history.agent") ?? "" {
+        didSet {
+            UserDefaults.standard.set(historyAgent, forKey: "native.history.agent")
+            reconcileHistorySelection()
+        }
+    }
+    @Published var islandPresentation = IslandPresentationMode.stored(UserDefaults.standard.string(forKey: "native.island.presentation")) {
+        didSet { UserDefaults.standard.set(islandPresentation.rawValue, forKey: "native.island.presentation") }
+    }
     @Published var connected = false
     @Published var lastError: String?
     @Published var islandLessonID: String?
@@ -35,7 +45,13 @@ import SidecarCore
     private var refreshAgain = false
     private var generation = UUID()
     var revealMain: (() -> Void)?
-    var selectedLesson: Lesson? { lessons.first { $0.id == selectedID } }
+    var filteredLessons: [Lesson] { LessonHistory.matching(lessons, agent: historyAgent, query: historyQuery) }
+    var selectedLesson: Lesson? { filteredLessons.first { $0.id == selectedID } }
+    func reconcileHistorySelection() {
+        let next = LessonHistory.selection(selectedID, in: filteredLessons)
+        if next != selectedID { selectedID = next }
+    }
+    func clearHistoryFilters() { historyAgent = ""; historyQuery = "" }
     var islandLesson: Lesson? { lessons.first { $0.id == islandLessonID } ?? lessons.first { $0.status == "complete" } }
     var unreadCount: Int { lessons.filter { $0.status == "complete" && !readIDs.contains($0.id) }.count }
     var readKey: String { "native.read.\(api.endpoint.port)" }
@@ -121,7 +137,15 @@ import SidecarCore
         if readIDs.count > 5000 { readIDs = Set(lessons.map(\.id)).intersection(readIDs) }
         UserDefaults.standard.set(Array(readIDs), forKey: readKey)
     }
-    func openLesson(_ id: String?) { section = "feed"; selectedID = id; if let id { markRead(id) }; revealMain?() }
+    func openLesson(_ id: String?) {
+        section = "feed"
+        if let id, LessonHistory.needsFilterReset(for: id, lessons: lessons, agent: historyAgent, query: historyQuery) {
+            clearHistoryFilters()
+        }
+        selectedID = id
+        if let id { markRead(id) }
+        revealMain?()
+    }
     func startEngine() async {
         do { try await engine.start(port: api.endpoint.port); connect() }
         catch { lastError = error.localizedDescription }
