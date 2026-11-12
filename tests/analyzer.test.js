@@ -52,6 +52,44 @@ test('excludes images, attachment metadata and extracted text while retaining th
   assert.match(SYSTEM_PROMPT, /image-only input must not become an invented question or lesson/);
 });
 
+test('selects learning material by semantic role rather than an identifier blacklist', () => {
+  assert.match(SYSTEM_PROMPT, /Select study material by semantic role, not by matching a list of names, formats, or patterns/);
+  assert.match(SYSTEM_PROMPT, /Only A is study material/);
+  assert.match(SYSTEM_PROMPT, /unfamiliar syntax, unlisted protocols, arbitrary identifier names/);
+  assert.match(SYSTEM_PROMPT, /illustrative, not an exhaustive blacklist/);
+  assert.match(SYSTEM_PROMPT, /Exclude implementation identifiers and specification fragments from ALL learning analysis/);
+  for (const scope of ['API paths and operations of any protocol', 'field/parameter/property names', 'JSON key/value snippets or other structured data', 'standalone type declarations', 'internal configuration identifiers', 'function/class/table/column names', 'command lines']) {
+    assert.ok(SYSTEM_PROMPT.includes(scope), scope);
+  }
+  assert.match(SYSTEM_PROMPT, /Remove only the incidental references within mixed sentences, not the whole sentence/);
+  assert.match(SYSTEM_PROMPT, /actions, constraints, timing, negation, conditions, and meaningful quantities or precision/);
+  assert.match(SYSTEM_PROMPT, /When the user's explicit purpose is to learn a word's meaning/);
+  assert.match(SYSTEM_PROMPT, /Before returning JSON, check every learning section/);
+  assert.doesNotMatch(SYSTEM_PROMPT, /\/cms\/v1\/modlib|ch-deepseek|"multiplier": 1\.20|Preserve proper nouns and any technical identifiers/);
+});
+
+test('sends the same general policy for varied technical formats and explicit word-learning requests', async () => {
+  const inputs = [
+    '[GET] /cms/v1/modlib/work/model/list，加了 "multiplier": 1.20,字段。Decimal。只读展示倍率。不参与扣费。',
+    'POST /orders/{order_id}/cancel，取消后不能恢复，保留两位小数。',
+    'query CurrentViewer { viewer { isEnabled } }，只展示当前登录用户的信息。',
+    'rpc SaveDraft (DraftRequest) returns (DraftReply)，保存失败时保留本地内容。',
+    '把 invoice_record.is_archived 改成只读；执行 tool --dry-run，不要真的提交。',
+    '字段叫 enabledFlag，只能查看，不能修改。',
+    'decimal 这个词怎么读，和 integer 的意思有什么区别？',
+  ];
+  let messages;
+  const analyze = createAnalyzer({ model: 'test-model', apiKey: 'fake-key', baseUrl: 'https://example.com/v1' }, async (_url, options) => {
+    messages = JSON.parse(options.body).messages;
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ translation: 'Study the natural-language request.' }) } }] }) };
+  });
+  for (const text of inputs) {
+    await analyze(text);
+    assert.equal(messages[0].content, SYSTEM_PROMPT);
+    assert.equal(messages[1].content, `Study this user-authored text only:\n<user_text>\n${text}\n</user_text>`);
+  }
+});
+
 test('teaches communication across topics without imposing an engineering register', () => {
   assert.match(SYSTEM_PROMPT, /real communication across all topics/);
   assert.match(SYSTEM_PROMPT, /everyday life, relationships, feelings, travel, culture, study, work, technology/);
