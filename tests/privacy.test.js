@@ -23,6 +23,41 @@ test('skips raw code/log payloads and assistant replies', () => {
   assert.equal(reply.eligible,false);
 });
 
+const cursorPlanPrompt = `Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.`;
+
+test('ignores Cursor-generated plan implementation wrappers before extraction', () => {
+  for (const content of [cursorPlanPrompt, `  ${cursorPlanPrompt}\n `,
+    cursorPlanPrompt.replaceAll(' ', '\n\t'), cursorPlanPrompt.toLowerCase(),
+    `${cursorPlanPrompt}\n\n# CMS接口变更适配\n增加封面配置字段 coverImageConfig。`]) {
+    const event = normalizeIncomingEvent({ source: 'Cursor', content });
+    assert.equal(event.ignoredReason, 'cursor-plan-implementation');
+    assert.equal(event.eligible, false);
+    assert.equal(event.content, '[No learnable natural language]');
+  }
+});
+
+test('keeps learner-authored plan requests, template questions, and other platforms', () => {
+  for (const content of ['Implement the plan as specified.', 'Please implement the plan and add tests.',
+    '按这个 plan 实施 CMS 接口变更，不要修改计划文件。',
+    'Implement the plan as specified, but explain the trade-offs first.',
+    `请翻译这段 Cursor 指令：\n${cursorPlanPrompt}`,
+    `What does this mean?\n${cursorPlanPrompt}`, `> ${cursorPlanPrompt}`]) {
+    const event = normalizeIncomingEvent({ source: 'cursor', content });
+    assert.equal(event.eligible, true, content);
+    assert.equal(event.ignoredReason, undefined);
+  }
+  for (const source of ['manual', 'codex', 'claude', 'grok', 'pi']) {
+    const event = normalizeIncomingEvent({ source, content: cursorPlanPrompt });
+    assert.equal(event.eligible, true, source);
+    assert.equal(event.ignoredReason, undefined);
+  }
+  const reply = normalizeIncomingEvent({ source: 'cursor', eventType: 'assistant.reply', content: cursorPlanPrompt });
+  assert.equal(reply.eligible, false);
+  assert.equal(reply.ignoredReason, undefined);
+});
+
 test('quoted JSON credential names and common credentials are redacted', () => {
   for (const name of ['password', 'apiKey', 'session_token', 'token', 'secret', 'access_token', 'refreshToken', 'client_secret', 'authorization', 'private_key']) {
     for (const value of ['"sensitive-value"', "'sensitive-value'", 'sensitive-value']) {

@@ -114,6 +114,32 @@ test('passes everyday learning material unchanged with the general communication
   assert.equal(result.translation, translation);
 });
 
+test('returns verified source excerpts for original display without rewriting the user text', async () => {
+  const text = '整理需求变动https://rqqmslsz9y.feishu.[REDACTED TOKEN]，只保留已确认的内容。';
+  const fragments = ['整理需求变动', '，只保留已确认的内容。'];
+  const analyze = createAnalyzer({ model: 'test-model', apiKey: 'fake-key', baseUrl: 'https://example.com/v1' }, async () => ({
+    ok: true,
+    json: async () => ({ choices: [{ message: { content: JSON.stringify({ sourceFragments: fragments, translation: 'Organize the changes to the requirements and retain only confirmed content.' }) } }] }),
+  }));
+  const result = await analyze(text);
+  assert.equal(result.originalText, fragments.join('\n'));
+  assert.doesNotMatch(result.originalText, /https|feishu|REDACTED/);
+  assert.match(SYSTEM_PROMPT, /copied verbatim as non-overlapping contiguous substrings/);
+});
+
+test('original display rejects invented, translated, reordered, and duplicate source fragments', () => {
+  const text = '先检查，再保存。https://example.com';
+  const base = { translation: 'Check first, then save.' };
+  assert.equal(validateAnalysis({ ...base, sourceFragments: ['Check first, then save.'] }, text).originalText, '先检查，再保存。');
+  assert.equal(validateAnalysis({ ...base, sourceFragments: [null, {}, '伪造原文'] }, text).originalText, '先检查，再保存。');
+  assert.equal(validateAnalysis({ ...base, sourceFragments: ['再保存。', '先检查', '再保存。'] }, text).originalText, '先检查，再保存。');
+  assert.equal(validateAnalysis({ ...base, sourceFragments: ['先检查', '先检查', '，再保存。'] }, text).originalText, '先检查，再保存。');
+  assert.equal(validateAnalysis({ ...base, sourceFragments: [] }, text).originalText, '');
+  assert.equal(validateAnalysis(base, text).originalText, '先检查，再保存。');
+  assert.equal(validateAnalysis({ ...base, sourceFragments: ['https://example.com'] }, text).originalText, '');
+  assert.equal(Object.hasOwn(validateAnalysis(base), 'originalText'), false);
+});
+
 test('sanitizes optional arrays and missing fields', () => {
   const obj = validateAnalysis({translation:'Hello',vocabulary:[{term:'foo',meaning:'n'}]});
   assert.equal(obj.vocabulary[0].term,'foo');

@@ -17,7 +17,7 @@ public enum LessonHistory {
 
     public static func sourceName(_ source: String) -> String {
         let names = ["codex": "Codex", "cursor": "Cursor", "claude": "Claude Code",
-                     "grok": "Grok Build", "pi": "Pi", "dsh": "DSH", "qoder": "Qoder", "manual": "Demo"]
+                     "grok": "Grok Build", "pi": "Pi", "dsh": "DSH", "qoder": "Qoder", "manual": "手动导入"]
         let id = sourceID(source)
         if id == "__unknown__" { return "未知 Agent" }
         return names[id] ?? source.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -34,7 +34,7 @@ public enum LessonHistory {
         let selected = agent.isEmpty ? nil : sourceID(agent)
         return lessons.filter { lesson in
             guard selected == nil || sourceID(lesson.source) == selected else { return false }
-            return term.isEmpty || [lesson.content, lesson.analysis?.translation ?? "", sourceName(lesson.source)]
+            return term.isEmpty || [lesson.displayOriginalText, lesson.analysis?.translation ?? "", sourceName(lesson.source)]
                 .contains { $0.localizedCaseInsensitiveContains(term) }
         }
     }

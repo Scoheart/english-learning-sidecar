@@ -149,8 +149,14 @@ export function normalizeIncomingEvent(input) {
   if (!/^[a-z][a-z0-9_-]{1,31}$/.test(source)) throw new Error('Invalid source');
   const eventType = input.eventType ?? 'user.prompt.submitted';
   if (!['user.prompt.submitted', 'assistant.reply'].includes(eventType)) throw new Error('Unsupported eventType');
-  const learningText = extractLearningText(content).slice(0, 6000);
+  // Cursor's Build action submits this generated wrapper, not a learner-authored
+  // prompt. Match its distinctive opening before extraction/truncation, never a
+  // generic word like "plan" (or quoted templates in a normal question).
+  const cursorPlanImplementation = source === 'cursor' && eventType === 'user.prompt.submitted'
+    && /^Implement the plan as specified,?\s*it is attached for your reference\.\s*Do NOT edit the plan file itself\.(?:\s|$)/i.test(content.replace(/\s+/gu, ' '));
+  const learningText = cursorPlanImplementation ? '' : extractLearningText(content).slice(0, 6000);
   return {
+    ...(cursorPlanImplementation ? { ignoredReason: 'cursor-plan-implementation' } : {}),
     source, eventType,
     sessionId: hashMetadata(input.sessionId),
     turnId: hashMetadata(input.turnId),

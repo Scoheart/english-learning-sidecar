@@ -5,11 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createSidecar } from '../src/lib/server.js';
+import { createAnalyzer } from '../src/lib/analyzer.js';
+import { getOriginalText } from '../src/lib/original-text.js';
 
-async function fixture() {
+async function fixture(analyzer) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidecar-server-'));
   const app = createSidecar({host:'127.0.0.1',port:0,dataDir:dir,mode:'unconfigured',apiKey:'',model:''},
-    {analyzer:async (input) => ({translation:`English: ${input}`,vocabulary:[{term:'life cycle',meaning:'生命周期'}],grammar:[],examples:[]})});
+    {analyzer:analyzer ?? (async (input) => ({translation:`English: ${input}`,vocabulary:[{term:'life cycle',meaning:'生命周期'}],grammar:[],examples:[]}))});
   const address = await app.start();
   const token = fs.readFileSync(path.join(dir,'ingest-token'),'utf8').trim();
   return {
@@ -44,6 +46,59 @@ test('full ingest → queue → model → SQLite → API flow',async()=>{
     assert.equal((await repeat.json()).deduplicated,true);
     assert.equal((await (await fetch(`${s.base}/api/events`)).json()).events.length,1);
   } finally {await s.close();}
+});
+
+test('Cursor plan implementation bypasses storage and analysis while normal prompts still run', async () => {
+  const calls = [];
+  const s = await fixture(async content => {
+    calls.push(content);
+    return { translation: `English: ${content}`, vocabulary: [], grammar: [], examples: [] };
+  });
+  try {
+    const headers = { 'content-type': 'application/json', 'x-sidecar-token': s.token };
+    const content = `Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+# CMS接口变更适配\n增加封面配置字段 coverImageConfig。`;
+    for (let i = 0; i < 2; i++) {
+      const response = await fetch(`${s.base}/api/events`, {
+        method: 'POST', headers, body: JSON.stringify({ source: 'cursor', content }),
+      });
+      assert.equal(response.status, 202);
+      assert.deepEqual(await response.json(), { ignored: true, reason: 'cursor-plan-implementation' });
+    }
+    assert.deepEqual((await (await fetch(`${s.base}/api/events`)).json()).events, []);
+    assert.deepEqual((await (await fetch(`${s.base}/api/knowledge`)).json()).knowledge, []);
+    assert.deepEqual(calls, []);
+    const normal = 'Please implement the plan and add tests.';
+    const response = await fetch(`${s.base}/api/events`, {
+      method: 'POST', headers, body: JSON.stringify({ source: 'cursor', content: normal }),
+    });
+    assert.equal(response.status, 202);
+    await until(async () => (await (await fetch(`${s.base}/api/events`)).json()).events[0]?.status === 'complete');
+    assert.deepEqual(calls, [normal]);
+    assert.equal((await (await fetch(`${s.base}/api/events`)).json()).events.length, 1);
+  } finally { await s.close(); }
+});
+
+test('selected original text survives model → storage → API while captured content stays unchanged', async () => {
+  const analyze = createAnalyzer({ model: 'fixture', apiKey: 'fixture-key', baseUrl: 'https://example.com/v1' }, async () => ({
+    ok: true,
+    json: async () => ({ choices: [{ message: { content: JSON.stringify({ sourceFragments: ['整理需求变动'], translation: 'Organize the changes to the requirements.' }) } }] }),
+  }));
+  const s = await fixture(analyze);
+  try {
+    const content = '整理需求变动https://example.com/doc';
+    const response = await fetch(`${s.base}/api/events`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-sidecar-token': s.token },
+      body: JSON.stringify({ source: 'manual', content }),
+    });
+    assert.equal(response.status, 202);
+    await until(async () => (await (await fetch(`${s.base}/api/events`)).json()).events[0]?.status === 'complete');
+    const event = (await (await fetch(`${s.base}/api/events`)).json()).events[0];
+    assert.equal(event.content, content);
+    assert.equal(event.analysis.originalText, '整理需求变动');
+    assert.equal(getOriginalText(event.content, event.analysis.originalText), '整理需求变动');
+  } finally { await s.close(); }
 });
 
 test('pause, origin protection, disabled capture and static content',async()=>{

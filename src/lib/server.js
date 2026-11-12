@@ -35,14 +35,16 @@ async function readJson(req) {
   }
   let size = 0;
   const chunks = [];
+  // Drain oversized requests without retaining their bodies. Throwing inside a
+  // request's async iterator destroys its socket before a 413 can be delivered.
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) {
-      const e = new Error('Payload too large');
-      e.status = 413;
-      throw e;
-    }
-    chunks.push(chunk);
+    if (size <= MAX_BODY_BYTES) chunks.push(chunk);
+  }
+  if (size > MAX_BODY_BYTES) {
+    const e = new Error('Payload too large');
+    e.status = 413;
+    throw e;
   }
   try {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -202,6 +204,32 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
 
       if (req.method === 'GET' && pathname === '/api/knowledge') {
         return json(res, 200, { knowledge: db.listKnowledge() });
+      }
+
+      if (req.method === 'GET' && pathname === '/api/history') {
+        return json(res, 200, db.listHistory({
+          q: url.searchParams.get('q') ?? '',
+          category: url.searchParams.get('category') ?? 'all',
+          offset: url.searchParams.get('offset') ?? 0,
+          limit: url.searchParams.get('limit') ?? 60,
+        }));
+      }
+
+      if (req.method === 'GET' && pathname === '/api/favorites') {
+        return json(res, 200, { favorites: db.listFavorites() });
+      }
+
+      if (req.method === 'POST' && pathname === '/api/favorites') {
+        const result = db.addFavorite(await readJson(req));
+        if (!result.duplicate) broadcast();
+        return json(res, result.duplicate ? 200 : 201, result);
+      }
+
+      const favoriteRemove = pathname.match(/^\/api\/favorites\/([0-9a-f-]+)$/i);
+      if (req.method === 'DELETE' && favoriteRemove) {
+        const removed = db.deleteFavorite(favoriteRemove[1]);
+        if (removed) broadcast();
+        return json(res, removed ? 200 : 404, { removed });
       }
 
       if (req.method === 'GET' && pathname === '/api/models') {
@@ -395,6 +423,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
         const body = await readJson(req);
         if (!isProjectAllowed(body?.projectPath, capturePolicy())) return json(res, 202, { ignored: true, reason: 'project-policy' });
         const event = normalizeIncomingEvent(body);
+        if (event.ignoredReason) return json(res, 202, { ignored: true, reason: event.ignoredReason });
         const result = db.addEvent(event);
         if (!result.deduplicated) {
           broadcast();
@@ -421,6 +450,10 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
       }
 
       const eventRemove = pathname.match(/^\/api\/events\/([0-9a-f-]+)$/);
+      if (req.method === 'GET' && eventRemove) {
+        const event = db.getEvent(eventRemove[1]);
+        return json(res, event ? 200 : 404, event ? { event } : { error: 'Event not found' });
+      }
       if (req.method === 'DELETE' && eventRemove) {
         const knowledge = url.searchParams.get('knowledge') || 'keep';
         if (!['keep', 'purge'].includes(knowledge)) return json(res, 400, { error: 'knowledge must be keep or purge' });

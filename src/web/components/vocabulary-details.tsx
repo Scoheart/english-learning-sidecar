@@ -2,6 +2,7 @@ import React from 'react';
 import { Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { type RenderFavorite } from '@/components/favorite-button';
 
 export interface LearningExample {
   english: string;
@@ -69,11 +70,12 @@ export function ExampleAttribution({ example }: { example: LearningExample }) {
   );
 }
 
-export function VocabularyExample({ example, onSpeak }: { example: LearningExample; onSpeak: (text: string) => void }) {
+export function VocabularyExample({ example, onSpeak, renderFavorite }: { example: LearningExample; onSpeak: (text: string) => void; renderFavorite?: RenderFavorite }) {
   return (
     <div className="space-y-1 border-l-2 border-border pl-2.5">
       <div className="flex items-start gap-1">
         <p lang="en" className="min-w-0 flex-1 break-words text-pretty text-xs leading-relaxed text-foreground">{example.english}</p>
+        {renderFavorite?.({ term: example.english, meaning: example.chinese, category: 'example' })}
         <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`朗读例句 ${example.english}`} onClick={() => onSpeak(example.english)}>
           <Volume2 aria-hidden="true" className="size-3.5" />
         </Button>
@@ -85,7 +87,7 @@ export function VocabularyExample({ example, onSpeak }: { example: LearningExamp
   );
 }
 
-function WordList({ words, onSpeak, contrast = false }: { words: RelatedWord[]; onSpeak: (text: string) => void; contrast?: boolean }) {
+function WordList({ words, onSpeak, contrast = false, renderFavorite }: { words: RelatedWord[]; onSpeak: (text: string) => void; contrast?: boolean; renderFavorite?: RenderFavorite }) {
   return (
     <ul className="space-y-3">
       {words.map((word, index) => (
@@ -97,20 +99,21 @@ function WordList({ words, onSpeak, contrast = false }: { words: RelatedWord[]; 
               {word.pos && <span className="ml-1.5 font-medium text-muted-foreground">{word.pos}</span>}
               <span className="ml-1.5 text-foreground/85">{word.meaning}</span>
             </div>
+            {renderFavorite?.({ term: word.term, meaning: word.meaning, category: 'vocabulary' })}
             <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground" aria-label={`朗读 ${word.term}`} onClick={() => onSpeak(word.term)}>
               <Volume2 aria-hidden="true" className="size-3.5" />
             </Button>
           </div>
           {word.relationship && <p className="break-words text-pretty leading-relaxed text-muted-foreground">{word.relationship}</p>}
           {contrast && word.difference && <p className="break-words text-pretty leading-relaxed text-foreground/85"><span className="font-medium">区别：</span>{word.difference}</p>}
-          {word.example && <VocabularyExample example={word.example} onSpeak={onSpeak} />}
+          {word.example && <VocabularyExample example={word.example} onSpeak={onSpeak} renderFavorite={renderFavorite} />}
         </li>
       ))}
     </ul>
   );
 }
 
-export function VocabularyDetails({ vocabulary, onSpeak }: { vocabulary: VocabularyItem; onSpeak: (text: string) => void }) {
+export function VocabularyDetails({ vocabulary, onSpeak, renderFavorite }: { vocabulary: VocabularyItem; onSpeak: (text: string) => void; renderFavorite?: RenderFavorite }) {
   const senses = vocabulary.senses ?? [];
   const family = vocabulary.wordFamily ?? [];
   const examples = vocabulary.examples ?? [];
@@ -124,7 +127,7 @@ export function VocabularyDetails({ vocabulary, onSpeak }: { vocabulary: Vocabul
             {senses.map((sense, index) => (
               <li key={index} className="space-y-1.5">
                 <p className="break-words text-pretty leading-relaxed"><span className="mr-1.5 font-semibold text-muted-foreground">{sense.pos}</span>{sense.meaning}</p>
-                {sense.example && <VocabularyExample example={sense.example} onSpeak={onSpeak} />}
+                {sense.example && <VocabularyExample example={sense.example} onSpeak={onSpeak} renderFavorite={renderFavorite} />}
               </li>
             ))}
           </ul>
@@ -133,13 +136,13 @@ export function VocabularyDetails({ vocabulary, onSpeak }: { vocabulary: Vocabul
       {examples.length > 0 && (
         <section aria-label={`${vocabulary.term} 的用法例句`} className="space-y-2">
           <p className="text-balance text-xs font-semibold text-foreground">用法例句</p>
-          {examples.map((example, index) => <VocabularyExample key={index} example={example} onSpeak={onSpeak} />)}
+          {examples.map((example, index) => <VocabularyExample key={index} example={example} onSpeak={onSpeak} renderFavorite={renderFavorite} />)}
         </section>
       )}
       {family.length > 0 && (
         <section aria-label={`${vocabulary.term} 的同源词派生`} className="space-y-2 border-t border-border/60 pt-2.5">
           <p className="text-balance text-xs font-semibold text-foreground">同源词派生 · Word Family</p>
-          <WordList words={family} onSpeak={onSpeak} />
+          <WordList words={family} onSpeak={onSpeak} renderFavorite={renderFavorite} />
         </section>
       )}
       {hasRelations && (
@@ -150,12 +153,12 @@ export function VocabularyDetails({ vocabulary, onSpeak }: { vocabulary: Vocabul
           </TabsList>
           <TabsContent value="synonyms" className="mt-3 animate-none">
             {(vocabulary.synonyms?.length ?? 0) > 0
-              ? <WordList words={vocabulary.synonyms!} onSpeak={onSpeak} contrast />
+              ? <WordList words={vocabulary.synonyms!} onSpeak={onSpeak} renderFavorite={renderFavorite} contrast />
               : <p className="text-pretty text-xs leading-relaxed text-muted-foreground">暂无适合当前词义的同义词；可先结合例句理解用法。</p>}
           </TabsContent>
           <TabsContent value="antonyms" className="mt-3 animate-none">
             {(vocabulary.antonyms?.length ?? 0) > 0
-              ? <WordList words={vocabulary.antonyms!} onSpeak={onSpeak} contrast />
+              ? <WordList words={vocabulary.antonyms!} onSpeak={onSpeak} renderFavorite={renderFavorite} contrast />
               : <p className="text-pretty text-xs leading-relaxed text-muted-foreground">暂无适合当前词义的直接反义词；可先结合例句理解用法。</p>}
           </TabsContent>
         </Tabs>

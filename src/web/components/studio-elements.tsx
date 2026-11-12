@@ -315,7 +315,7 @@ export function getCorrectionStatusMeta(status?: string): { label: string; class
       };
     default:
       return {
-        label: '母语级工程表达 · Native Rewrite',
+        label: '自然英文表达 · Native Rewrite',
         className: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
       };
   }

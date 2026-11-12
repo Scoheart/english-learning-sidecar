@@ -1,0 +1,13 @@
+{
+  "pins" : [
+    {
+      "identity" : "dynamicnotchkit-mirror",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/MrKai77/DynamicNotchKit.git",
+      "state" : {
+        "revision" : "cd0b3e52d537db115ad3a9d89601f20e0bee8d27"
+      }
+    }
+  ],
+  "version" : 2
+}

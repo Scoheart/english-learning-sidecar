@@ -63,4 +63,23 @@ final class NativeIntegrationTests: XCTestCase {
         XCTAssertEqual(store.historyQuery, "")
         XCTAssertEqual(store.selectedLesson?.content, "请帮我下载")
     }
+
+    func testStudioDesignSystemMappingsMatchWebConventions() {
+        XCTAssertEqual(StudioAccent.forPOS("v."), .rose)
+        XCTAssertEqual(StudioAccent.forPOS("n."), .sky)
+        XCTAssertEqual(StudioAccent.forPOS("adj."), .amber)
+        XCTAssertEqual(StudioAccent.forPOS("prep."), .indigo)
+
+        XCTAssertEqual(StudioAccent.forConstituent(role: "主语 Subject", index: 0), .sky)
+        XCTAssertEqual(StudioAccent.forConstituent(role: "谓语动词 Verb", index: 1), .rose)
+        XCTAssertEqual(StudioAccent.forConstituent(role: "宾语 Object", index: 2), .emerald)
+        XCTAssertEqual(StudioAccent.forConstituent(role: "目的状语 Modifier", index: 3), .amber)
+        XCTAssertEqual(StudioAccent.forConstituent(role: "定语从句 Clause", index: 4), .violet)
+
+        XCTAssertEqual(StudioCorrectionMeta.from("natural").accent, .emerald)
+        XCTAssertEqual(StudioCorrectionMeta.from("natural_but_improvable").accent, .indigo)
+        XCTAssertEqual(StudioCorrectionMeta.from("needs_correction").accent, .amber)
+        XCTAssertEqual(StudioStatusMeta.from("complete").accent, .emerald)
+        XCTAssertEqual(StudioStatusMeta.from("processing").accent, .sky)
+    }
 }

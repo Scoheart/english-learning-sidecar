@@ -6,6 +6,12 @@ import SidecarCore
     @Published var status: Status?
     @Published var lessons: [Lesson] = [] { didSet { reconcileHistorySelection() } }
     @Published var knowledge: [Knowledge] = []
+    @Published var favorites: [FavoriteItem] = []
+    @Published var historyRecords: [HistoryRecord] = []
+    @Published var historyTotal: Int = 0
+    @Published var historyRevision: Int = 0
+    @Published var favoriteNotice: String?
+    @Published var openedLesson: Lesson?
     @Published var models: [SafeModel] = []
     @Published var textPresets: [TextModelPreset] = []
     @Published var activeTextID: String?
@@ -47,12 +53,78 @@ import SidecarCore
     private var generation = UUID()
     var revealMain: (() -> Void)?
     var filteredLessons: [Lesson] { LessonHistory.matching(lessons, agent: historyAgent, query: historyQuery) }
-    var selectedLesson: Lesson? { filteredLessons.first { $0.id == selectedID } }
+    var selectedLesson: Lesson? {
+        if let opened = openedLesson, opened.id == selectedID { return opened }
+        return filteredLessons.first { $0.id == selectedID }
+    }
     func reconcileHistorySelection() {
+        if let opened = openedLesson, opened.id == selectedID { return }
         let next = LessonHistory.selection(selectedID, in: filteredLessons)
         if next != selectedID { selectedID = next }
     }
     func clearHistoryFilters() { historyAgent = ""; historyQuery = "" }
+    private static func normalizeFavoriteKey(category: String, term: String) -> String {
+        let collapsed = term.precomposedStringWithCompatibilityMapping
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return "\(category):\(collapsed)"
+    }
+    func isFavorite(category: String, term: String) -> Bool {
+        let target = Self.normalizeFavoriteKey(category: category, term: term)
+        return favorites.contains { Self.normalizeFavoriteKey(category: $0.category, term: $0.term) == target }
+    }
+    func saveFavorite(term: String, meaning: String, category: String, eventID: String? = nil) async {
+        if isFavorite(category: category, term: term) {
+            showFavoriteNotice("已在收藏夹，无需重复收藏")
+            return
+        }
+        var payload: [String: Any] = ["term": term, "meaning": meaning, "category": category]
+        if let eventID, !eventID.isEmpty { payload["eventId"] = eventID }
+        do {
+            let data = try await api.data("/api/favorites", method: "POST", body: payload)
+            let res = try JSONDecoder().decode(FavoriteMutationResponse.self, from: data)
+            favorites.removeAll { $0.id == res.favorite.id }
+            favorites.insert(res.favorite, at: 0)
+            showFavoriteNotice(res.message)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+    func removeFavorite(_ id: String) async {
+        do {
+            _ = try await api.data("/api/favorites/\(id)", method: "DELETE")
+            favorites.removeAll { $0.id == id }
+            showFavoriteNotice("已取消收藏，History 中的记录仍会保留。")
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+    func openEventByID(_ id: String) async {
+        if lessons.contains(where: { $0.id == id }) {
+            openedLesson = nil
+            openLesson(id)
+            return
+        }
+        do {
+            let res = try await api.get("/api/events/\(id)", as: SingleEventResponse.self)
+            openedLesson = res.event
+            section = "feed"
+            clearHistoryFilters()
+            selectedID = res.event.id
+            markRead(res.event.id)
+            revealMain?()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+    private func showFavoriteNotice(_ message: String) {
+        favoriteNotice = message
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            if self?.favoriteNotice == message { self?.favoriteNotice = nil }
+        }
+    }
     var islandLesson: Lesson? { lessons.first { $0.id == islandLessonID } ?? lessons.first { $0.status == "complete" } }
     var unreadCount: Int { lessons.filter { $0.status == "complete" && !readIDs.contains($0.id) }.count }
     var readKey: String { "native.read.\(api.endpoint.port)" }
@@ -67,7 +139,8 @@ import SidecarCore
             guard let next = try? SidecarAPI(port: port) else { lastError = "请输入 1–65535 之间的端口。"; return }
             api.close(); api = next; UserDefaults.standard.set(port, forKey: "native.port")
             readIDs = Set(UserDefaults.standard.stringArray(forKey: readKey) ?? [])
-            lessons = []; knowledge = []; models = []; textPresets = []; status = nil; selectedID = nil
+            lessons = []; knowledge = []; favorites = []; historyRecords = []; historyTotal = 0; openedLesson = nil
+            models = []; textPresets = []; status = nil; selectedID = nil
             tracker.reset(); islandLessonID = nil
         }
         connectionTask?.cancel(); generation = UUID()
@@ -118,8 +191,11 @@ import SidecarCore
                 async let k = current.get("/api/knowledge", as: KnowledgeList.self)
                 async let m = current.get("/api/models", as: ModelList.self)
                 let (st, events, words, configs) = try await (s, e, k, m)
+                let favs = try? await current.get("/api/favorites", as: FavoriteList.self)
                 guard identity == generation else { refreshAgain = true; continue }
                 status = st; lessons = events.events; knowledge = words.knowledge; models = configs.models
+                if let favs { favorites = favs.favorites }
+                historyRevision &+= 1
                 textPresets = configs.textPresets ?? []
                 activeTextID = configs.activeTextId; activeSpeechID = configs.activeSpeechId
                 connected = true

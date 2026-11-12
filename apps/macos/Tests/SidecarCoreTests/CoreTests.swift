@@ -15,9 +15,54 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(result.events.first?.preview.term, "requirement")
     }
     func testStatusDecodesWithLiveOnlyEngine() throws {
-        let payload = #"{"mode":"unconfigured","model":"gpt-4o-mini","paused":false,"configurationMessage":"请先接入模型","stats":{"total":0,"complete":0,"pending":0,"failed":0,"knowledge":0}}"#
+        let payload = #"{"mode":"unconfigured","model":"gpt-4o-mini","paused":false,"configurationMessage":"请先接入模型","capturePolicy":{"mode":"allowlist","allowedProjects":["/tmp/a"],"excludedProjects":[]},"stats":{"total":0,"complete":0,"pending":0,"failed":0,"knowledge":0}}"#
         let status = try JSONDecoder().decode(Status.self, from: Data(payload.utf8))
         XCTAssertEqual(status.mode, "unconfigured")
+        XCTAssertEqual(status.capturePolicy?.mode, "allowlist")
+        XCTAssertEqual(status.capturePolicy?.allowedProjects, ["/tmp/a"])
+    }
+    func testDecodeRichStudioAnalysisShape() throws {
+        let json = #"""
+        {
+          "id": "rich-1",
+          "source": "claude",
+          "content": "优化桌面端界面以呼应 Web 端风格",
+          "status": "complete",
+          "createdAt": "2026-11-12T08:00:00.000Z",
+          "analysis": {
+            "translation": "Refine the desktop UI to echo the web studio aesthetic.",
+            "correctionStatus": "natural_but_improvable",
+            "corrections": [
+              {"kind": "style", "before": "make UI better", "after": "refine the desktop UI", "reason": "More idiomatic engineering register."}
+            ],
+            "vocabulary": [
+              {
+                "term": "aesthetic",
+                "phonetic": "/esˈθetɪk/",
+                "pos": "n.",
+                "meaning": "美学风格；审美特质",
+                "morphology": "来自希腊语 aisthetikos（感知的）",
+                "usage": "studio aesthetic / visual aesthetic",
+                "nuance": "侧重整体协调的视觉格调",
+                "senses": [{"pos": "adj.", "meaning": "审美的；美学的", "example": {"english": "An aesthetic appeal.", "chinese": "审美吸引力。", "source": {"kind": "ai"}}}],
+                "wordFamily": [{"term": "aesthetically", "pos": "adv.", "meaning": "在审美上", "relationship": "副词派生"}],
+                "synonyms": [{"term": "style", "pos": "n.", "meaning": "风格", "difference": "style 更通用，aesthetic 强调审美体系"}],
+                "antonyms": []
+              }
+            ],
+            "examples": [
+              {"english": "The native client echoes the web app's typography.", "chinese": "原生客户端呼应了网页端的排版风格。", "note": "echo 作动词表示呼应", "source": {"kind": "reference", "title": "Design System Guide", "url": "https://example.com/design"}}
+            ]
+          }
+        }
+        """#
+        let lesson = try JSONDecoder().decode(Lesson.self, from: Data(json.utf8))
+        XCTAssertEqual(lesson.analysis?.correctionStatus, "natural_but_improvable")
+        XCTAssertEqual(lesson.analysis?.corrections?.first?.kind, "style")
+        XCTAssertEqual(lesson.analysis?.vocabulary?.first?.senses?.first?.pos, "adj.")
+        XCTAssertEqual(lesson.analysis?.vocabulary?.first?.wordFamily?.first?.term, "aesthetically")
+        XCTAssertEqual(lesson.analysis?.vocabulary?.first?.synonyms?.first?.difference, "style 更通用，aesthetic 强调审美体系")
+        XCTAssertEqual(lesson.analysis?.examples?.first?.source?.title, "Design System Guide")
     }
     func testPartialAnalysisIsBackwardCompatible() throws {
         let item = try JSONDecoder().decode(Lesson.self, from: Data(#"{"id":"a","source":"pi","content":"x","status":"processing","createdAt":"bad-date","analysis":null}"#.utf8))

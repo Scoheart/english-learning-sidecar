@@ -1,5 +1,7 @@
 import { isLoopbackHost, validateAuthMode, validateBaseUrl } from './models.js';
 
+import { cleanOriginalText } from './original-text.js';
+
 export const SYSTEM_PROMPT = `You are a systematic English tutor and communication coach for a Chinese-speaking learner. The goal is to build practical English comprehension and expression for real communication across all topics, not just technical vocabulary or professional writing.
 Follow the topic and communicative intent of the user's text, whether it concerns everyday life, relationships, feelings, travel, culture, study, work, technology, or any other subject. Never force nontechnical content into a software engineering context.
 Teach useful, natural vocabulary, collocations, sentence patterns, and pragmatic choices that the learner can reuse. Match the original tone and situation: use conversational English for casual exchanges, and formal or specialist language only when the text calls for it. Prefer clear, common expressions over unnecessarily advanced words; do not equate natural English with formal or complex English.
@@ -25,8 +27,10 @@ Teach English systematically across FOUR linguistic layers (字 · 词 · 句 ·
    - Core Grammar Rules (核心语法规则与句式骨架)
 4. 【段 · Discourse & Cohesion】Explain how ideas connect naturally in English for this situation, including differences from Chinese where useful. Do not assume longer or more complex sentences are better. Provide a 2-3 sentence practice expansion matching the original topic, tone, and communicative purpose; keep casual speech conversational rather than forcing a professional paragraph or a fixed engineering structure.
 
+Return sourceFragments containing only the selected natural-language study material, copied verbatim as non-overlapping contiguous substrings of <user_text> in their original order. Split around excluded links, images, technical identifiers, and other reference material. Preserve original wording, language, punctuation, and meaningful numbers; do not translate, rewrite, insert generic referents, or reconstruct sentences in sourceFragments. Return [] if no natural-language material remains. The original-text display will use these exact excerpts, while translation may use generic referents for fluency as described above.
 Return ONLY a valid JSON object with EXACTLY these fields:
 {
+  "sourceFragments": ["Exact original-language excerpt of the user's own natural-language question or request"],
   "translation": "A fluent, idiomatic English version of the user's prompt",
   "language": "zh | en | mixed",
   "correctionStatus": "needs_correction | natural_but_improvable | natural | translated",
@@ -103,7 +107,25 @@ function parseObject(value) {
   return JSON.parse(text.slice(start, end + 1));
 }
 
-export function validateAnalysis(value) {
+function selectedOriginalText(value, text) {
+  const fallback = cleanOriginalText(text);
+  if (!Array.isArray(value.sourceFragments)) return fallback;
+  if (value.sourceFragments.length === 0) return '';
+  if (value.sourceFragments.length > 40) return fallback;
+  const excerpts = [];
+  let cursor = 0;
+  for (const fragment of value.sourceFragments) {
+    if (typeof fragment !== 'string' || !fragment.trim() || fragment.length > 6000) return fallback;
+    const start = text.indexOf(fragment, cursor);
+    if (start < 0) return fallback;
+    excerpts.push(fragment);
+    cursor = start + fragment.length;
+  }
+  // Never display model paraphrases or translations as the user's original.
+  return excerpts.length ? cleanOriginalText(excerpts.join('\n')) : fallback;
+}
+
+export function validateAnalysis(value, sourceText) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid analysis object');
   if (typeof value.translation !== 'string' || !value.translation.trim()) throw new Error('Missing translation');
   const object = input => input !== null && typeof input === 'object' && !Array.isArray(input);
@@ -154,6 +176,7 @@ export function validateAnalysis(value) {
   const rawDiscourse = object(value.discourse) ? value.discourse : {};
 
   return {
+    ...(typeof sourceText === 'string' ? { originalText: selectedOriginalText(value, sourceText) } : {}),
     translation: str(value.translation, 1200),
     language: ['zh', 'en', 'mixed'].includes(value.language) ? value.language : 'mixed',
     correctionStatus: ['needs_correction', 'natural_but_improvable', 'natural', 'translated']
@@ -269,7 +292,7 @@ export function createAnalyzer(config, request = fetch) {
       const payload = await res.json();
       const content = payload.choices?.[0]?.message?.content;
       const raw = Array.isArray(content) ? content.map(p => p.text || '').join('') : content;
-      const result = validateAnalysis(parseObject(raw));
+      const result = validateAnalysis(parseObject(raw), text);
       // Only exact English excerpts may be labelled as actual corrections.
       result.corrections = result.corrections.filter(c => c.before.trim() && text.includes(c.before));
       result.sentenceAnatomy.constituents = result.sentenceAnatomy.constituents.filter(c => c.fragment.trim() && result.translation.includes(c.fragment));
