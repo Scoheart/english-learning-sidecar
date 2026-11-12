@@ -59,13 +59,25 @@ public struct Knowledge: Decodable, Identifiable, Hashable, Sendable {
 }
 public struct SafeModel: Decodable, Identifiable, Hashable, Sendable {
     public let id: String; public let name: String; public let kind: String; public let baseUrl: String; public let model: String
+    public var authMode: String?
     public var voice: String?; public var temperature: Double?; public var apiKeySet: Bool?; public var apiKeyMasked: String?
 }
 public struct ModelList: Decodable, Sendable {
     public let models: [SafeModel]; public var activeTextId: String?; public var activeSpeechId: String?
+    public var textPresets: [TextModelPreset]?
+}
+public struct TextModelPreset: Decodable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let baseUrl: String
+    public let authMode: String
+}
+public struct ModelTestResult: Decodable, Sendable {
+    public let translation: String
 }
 public struct Status: Decodable, Sendable {
-    public let mode: String; public let model: String; public let paused: Bool; public let demoEnabled: Bool
+    public let mode: String; public let model: String; public let paused: Bool
+    public var configurationMessage: String?
     public let stats: Statistics; public var activeSpeechModel: SafeModel?
     public struct Statistics: Decodable, Sendable { public let total: Int; public let complete: Int; public let pending: Int; public let failed: Int; public let knowledge: Int }
 }

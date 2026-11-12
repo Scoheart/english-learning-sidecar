@@ -7,6 +7,7 @@ import SidecarCore
     @Published var lessons: [Lesson] = [] { didSet { reconcileHistorySelection() } }
     @Published var knowledge: [Knowledge] = []
     @Published var models: [SafeModel] = []
+    @Published var textPresets: [TextModelPreset] = []
     @Published var activeTextID: String?
     @Published var activeSpeechID: String?
     @Published var selectedID: String?
@@ -66,7 +67,7 @@ import SidecarCore
             guard let next = try? SidecarAPI(port: port) else { lastError = "请输入 1–65535 之间的端口。"; return }
             api.close(); api = next; UserDefaults.standard.set(port, forKey: "native.port")
             readIDs = Set(UserDefaults.standard.stringArray(forKey: readKey) ?? [])
-            lessons = []; knowledge = []; models = []; status = nil; selectedID = nil
+            lessons = []; knowledge = []; models = []; textPresets = []; status = nil; selectedID = nil
             tracker.reset(); islandLessonID = nil
         }
         connectionTask?.cancel(); generation = UUID()
@@ -119,6 +120,7 @@ import SidecarCore
                 let (st, events, words, configs) = try await (s, e, k, m)
                 guard identity == generation else { refreshAgain = true; continue }
                 status = st; lessons = events.events; knowledge = words.knowledge; models = configs.models
+                textPresets = configs.textPresets ?? []
                 activeTextID = configs.activeTextId; activeSpeechID = configs.activeSpeechId
                 connected = true
                 let fresh = tracker.observe(lessons)

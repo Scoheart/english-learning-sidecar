@@ -14,6 +14,11 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(result.events.first?.preview.english, "Analyze the requirements.")
         XCTAssertEqual(result.events.first?.preview.term, "requirement")
     }
+    func testStatusDecodesWithLiveOnlyEngine() throws {
+        let payload = #"{"mode":"unconfigured","model":"gpt-4o-mini","paused":false,"configurationMessage":"请先接入模型","stats":{"total":0,"complete":0,"pending":0,"failed":0,"knowledge":0}}"#
+        let status = try JSONDecoder().decode(Status.self, from: Data(payload.utf8))
+        XCTAssertEqual(status.mode, "unconfigured")
+    }
     func testPartialAnalysisIsBackwardCompatible() throws {
         let item = try JSONDecoder().decode(Lesson.self, from: Data(#"{"id":"a","source":"pi","content":"x","status":"processing","createdAt":"bad-date","analysis":null}"#.utf8))
         XCTAssertNil(item.date)

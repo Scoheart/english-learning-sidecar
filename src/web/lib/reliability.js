@@ -2,18 +2,29 @@
 export function modelPayload(form, original) {
   const payload = { name: form.name.trim(), kind: form.kind, baseUrl: form.baseUrl.trim(), model: form.model.trim() };
   if (!payload.name || !payload.baseUrl || !payload.model) throw new Error('请填写名称、Base URL 和模型标识。');
+  const noAuth = form.kind === 'text' && form.authMode === 'none';
   const key = (form.apiKey || '').trim();
-  if (original && payload.baseUrl.replace(/\/+$/, '') !== original.baseUrl.replace(/\/+$/, '') && !key && !form.clearApiKey) {
+  if (original && payload.baseUrl.replace(/\/+$/, '') !== original.baseUrl.replace(/\/+$/, '') && !key && !form.clearApiKey && !noAuth) {
     throw new Error('Provider Base URL 已更改，请重新输入密钥，或明确选择清除密钥。');
   }
   if (form.kind === 'speech') payload.voice = (form.voice || '').trim() || 'marin';
   else {
+    payload.authMode = form.authMode || 'bearer';
     payload.temperature = form.temperature?.trim() ? Number(form.temperature) : null;
     if (payload.temperature !== null && (!Number.isFinite(payload.temperature) || payload.temperature < 0 || payload.temperature > 2)) throw new Error('Temperature 必须为 0–2，或留空。');
   }
-  if (form.clearApiKey) payload.apiKey = '';
+  if (form.clearApiKey || noAuth) payload.apiKey = '';
   else if (key || !form.id) payload.apiKey = key;
   return payload;
+}
+
+export function modelTestPayload(draft, form) {
+  const original = draft.models.find(m => m.id === form.id);
+  return {
+    id: form.id,
+    apiKey: original?.apiKey,
+    ...modelPayload(form, original),
+  };
 }
 
 // Settings changes are immutable local drafts until the single confirmation request.

@@ -1,4 +1,4 @@
-import { validateBaseUrl } from './models.js';
+import { isLoopbackHost, validateAuthMode, validateBaseUrl } from './models.js';
 
 export const SYSTEM_PROMPT = `You are a systematic English tutor and communication coach for a Chinese-speaking learner. The goal is to build practical English comprehension and expression for real communication across all topics, not just technical vocabulary or professional writing.
 Follow the topic and communicative intent of the user's text, whether it concerns everyday life, relationships, feelings, travel, culture, study, work, technology, or any other subject. Never force nontechnical content into a software engineering context.
@@ -217,17 +217,35 @@ export function validateAnalysis(value) {
   };
 }
 
+export class ModelHTTPError extends Error {
+  constructor(status) {
+    super(`Model API returned HTTP ${status}`);
+    this.upstreamStatus = status;
+  }
+}
+
+export class ModelTimeoutError extends Error {
+  constructor(seconds) {
+    super(`The learning model did not respond within ${seconds} seconds`);
+    this.seconds = seconds;
+  }
+}
+
 export function createAnalyzer(config, request = fetch) {
   return async (text, { signal } = {}) => {
-    if (!config.apiKey?.trim()) throw new Error('请先接入模型：在设置中配置文本模型的 API Key。');
+    if (config.authMode !== 'none' && !config.apiKey?.trim()) throw new Error('请先接入模型：在设置中配置文本模型的 API Key。');
     const baseUrl = validateBaseUrl(config.baseUrl);
+    const authMode = validateAuthMode('text', baseUrl, config.authMode);
+    const headers = { 'content-type': 'application/json' };
+    if (authMode === 'bearer') headers.authorization = `Bearer ${config.apiKey}`;
     const controller = new AbortController();
     let response;
     let timedOut = false;
     const onAbort = () => controller.abort(signal?.reason);
     if (signal?.aborted) onAbort();
     else signal?.addEventListener('abort', onAbort, { once: true });
-    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 90000);
+    const timeoutSeconds = isLoopbackHost(new URL(baseUrl).hostname) ? 180 : 90;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutSeconds * 1000);
     try {
       const bodyPayload = {
         model: config.model,
@@ -243,11 +261,11 @@ export function createAnalyzer(config, request = fetch) {
       const res = response = await request(`${baseUrl}/chat/completions`, {
         method: 'POST',
         redirect: 'error',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${config.apiKey}` },
+        headers,
         body: JSON.stringify(bodyPayload),
         signal: controller.signal,
       });
-      if (!res.ok) throw new Error(`Model API returned HTTP ${res.status}`);
+      if (!res.ok) throw new ModelHTTPError(res.status);
       const payload = await res.json();
       const content = payload.choices?.[0]?.message?.content;
       const raw = Array.isArray(content) ? content.map(p => p.text || '').join('') : content;
@@ -259,7 +277,7 @@ export function createAnalyzer(config, request = fetch) {
     } catch (err) {
       if (signal?.aborted) throw signal.reason || new DOMException('Analysis cancelled', 'AbortError');
       if (timedOut || err?.name === 'AbortError') {
-        throw new Error('The learning model did not respond within 90 seconds');
+        throw new ModelTimeoutError(timeoutSeconds);
       }
       throw err;
     } finally {

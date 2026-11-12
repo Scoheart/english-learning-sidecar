@@ -32,9 +32,9 @@ struct MainView: View {
                         Spacer()
                         EngineStartButton(store: store, engine: store.engine)
                     }.font(.callout).padding(12).background(Color.primary.opacity(0.04))
-                } else if store.status?.mode == "demo" {
+                } else if store.status?.mode != "live" {
                     HStack {
-                        Label("演示 / 未配置模式 · 请配置模型后启用真实分析。", systemImage: "info.circle")
+                        Label(store.status?.configurationMessage ?? "请配置文本模型以开始分析。", systemImage: "info.circle")
                         Spacer(); SettingsLink { Text("配置模型") }
                     }.font(.callout).padding(12).background(Color.primary.opacity(0.04))
                 }

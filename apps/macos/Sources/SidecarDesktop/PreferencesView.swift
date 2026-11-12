@@ -84,7 +84,6 @@ private struct ModelsPreferences: View {
                     }.padding(.vertical, 6)
                 }
             }.listStyle(.inset)
-            Text("添加有效 Key 后，内置引擎需要停止并重新启动，才会从 Demo 切到 Live。连接外部服务时，请使用原有的启动配置。").font(.caption).foregroundStyle(.secondary)
         }.padding(16)
         .sheet(item: $editing) { ModelEditor(store: store, draft: $0) }
         .confirmationDialog("删除模型？这会同时影响 Web 的模型配置。", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
@@ -92,7 +91,7 @@ private struct ModelsPreferences: View {
         }
     }
 }
-private struct ModelDraft: Identifiable {
+private struct ModelDraft: Identifiable, Equatable {
     let id = UUID()
     var modelID: String?
     var name = ""
@@ -100,46 +99,150 @@ private struct ModelDraft: Identifiable {
     var baseURL = "https://api.openai.com/v1"
     var model = ""
     var voice = "alloy"
+    var authMode = "bearer"
+    var resetTemperature = false
     var key = ""
     var clearKey = false
+
     init() {}
-    init(_ source: SafeModel) { modelID = source.id; name = source.name; kind = source.kind; baseURL = source.baseUrl; model = source.model; voice = source.voice ?? "alloy" }
+    init(_ source: SafeModel) {
+        modelID = source.id
+        name = source.name
+        kind = source.kind
+        baseURL = source.baseUrl
+        model = source.model
+        voice = source.voice ?? "alloy"
+        authMode = source.authMode ?? "bearer"
+    }
+
+    var canSubmit: Bool {
+        [name, baseURL, model].allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    var payload: [String: Any] {
+        var body: [String: Any] = ["name": name, "kind": kind, "baseUrl": baseURL, "model": model]
+        if kind == "speech" { body["voice"] = voice }
+        else {
+            body["authMode"] = authMode
+            if resetTemperature { body["temperature"] = NSNull() }
+        }
+        if clearKey || (kind == "text" && authMode == "none") { body["apiKey"] = "" }
+        else if modelID == nil || !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { body["apiKey"] = key }
+        return body
+    }
+
+    mutating func changeEndpoint(_ url: String) {
+        if baseURL.trimmingCharacters(in: .whitespacesAndNewlines) != url.trimmingCharacters(in: .whitespacesAndNewlines) {
+            key = ""
+        }
+        baseURL = url
+    }
+
+    mutating func apply(_ preset: TextModelPreset) {
+        if baseURL != preset.baseUrl {
+            name = preset.name
+            model = ""
+        } else if name.isEmpty {
+            name = preset.name
+        }
+        baseURL = preset.baseUrl
+        authMode = preset.authMode
+        resetTemperature = true
+        key = ""
+        clearKey = false
+    }
 }
+
 private struct ModelEditor: View {
     @ObservedObject var store: DesktopStore
     @Environment(\.dismiss) private var dismiss
     @State var draft: ModelDraft
     @State private var saving = false
     @State private var errorText: String?
+    @State private var testMessage: String?
+    @State private var testTask: Task<Void, Never>?
+
+    private var busy: Bool { saving || testTask != nil }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(draft.modelID == nil ? "添加模型" : "编辑模型").font(.title2.weight(.semibold))
             Form {
-                TextField("名称", text: $draft.name)
-                Picker("类型", selection: $draft.kind) { Text("文字分析").tag("text"); Text("语音合成").tag("speech") }.disabled(draft.modelID != nil)
-                TextField("Base URL", text: $draft.baseURL)
-                TextField("模型 ID", text: $draft.model)
-                if draft.kind == "speech" { TextField("Voice", text: $draft.voice) }
-                SecureField(draft.modelID == nil ? "API Key" : "API Key · 留空保留", text: $draft.key)
-                if draft.modelID != nil { Toggle("清除现有 Key", isOn: $draft.clearKey) }
-            }
-            if let errorText { Text(errorText).font(.caption).foregroundStyle(.secondary) }
-            HStack {
-                Spacer(); Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(saving ? "保存中…" : "保存") {
-                    saving = true
-                    Task {
-                        var body: [String: Any] = ["name": draft.name, "kind": draft.kind, "baseUrl": draft.baseURL, "model": draft.model]
-                        if draft.kind == "speech" { body["voice"] = draft.voice }
-                        if draft.modelID == nil || !draft.key.isEmpty || draft.clearKey { body["apiKey"] = draft.clearKey ? "" : draft.key }
-                        let path = draft.modelID.map { "/api/models/\($0)" } ?? "/api/models"
-                        let ok = await store.mutate(path, method: draft.modelID == nil ? "POST" : "PATCH", body: body)
-                        draft.key = ""; saving = false
-                        if ok { dismiss() } else { errorText = store.lastError; store.lastError = nil }
+                Picker("类型", selection: $draft.kind) {
+                    Text("文字分析").tag("text")
+                    Text("语音合成").tag("speech")
+                }.disabled(draft.modelID != nil)
+                if draft.kind == "text", !store.textPresets.isEmpty {
+                    Menu("服务商预设") {
+                        ForEach(store.textPresets) { preset in
+                            Button(preset.name) { draft.apply(preset) }
+                        }
                     }
-                }.keyboardShortcut(.defaultAction).disabled(saving || draft.name.trimmingCharacters(in: .whitespaces).isEmpty || draft.model.isEmpty)
+                }
+                TextField("名称", text: $draft.name)
+                TextField("Base URL", text: Binding(get: { draft.baseURL }, set: { draft.changeEndpoint($0) }))
+                TextField("模型 ID", text: $draft.model)
+                if draft.kind == "speech" {
+                    TextField("Voice", text: $draft.voice)
+                } else {
+                    Picker("认证", selection: $draft.authMode) {
+                        Text("API Key").tag("bearer")
+                        Text("本机免密（仅回环地址）").tag("none")
+                    }
+                }
+                if draft.kind == "speech" || draft.authMode != "none" {
+                    SecureField(draft.modelID == nil ? "API Key" : "API Key · 留空保留", text: $draft.key)
+                        .disabled(draft.clearKey)
+                    if draft.modelID != nil { Toggle("清除现有 Key", isOn: $draft.clearKey) }
+                }
+            }.disabled(busy)
+            if let errorText { Text(errorText).font(.caption).foregroundStyle(.red) }
+            if let testMessage { Text(testMessage).font(.caption).textSelection(.enabled) }
+            HStack {
+                if draft.kind == "text" {
+                    Button(testTask == nil ? "测试模型" : "测试中…", action: testModel)
+                        .disabled(busy || !draft.canSubmit)
+                        .help("发送一句固定样例，生成学习卡，不保存测试记录。")
+                }
+                Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(saving ? "保存中…" : "保存", action: saveModel)
+                    .keyboardShortcut(.defaultAction).disabled(busy || !draft.canSubmit)
             }
         }.padding(24).frame(width: 490)
+            .onChange(of: draft) { errorText = nil; testMessage = nil }
+            .onDisappear { testTask?.cancel() }
+    }
+
+    private func testModel() {
+        var body = draft.payload
+        if let id = draft.modelID { body["id"] = id }
+        let api = store.api
+        errorText = nil
+        testMessage = nil
+        testTask = Task {
+            defer { testTask = nil }
+            do {
+                let data = try await api.data("/api/models/test", method: "POST", body: body, timeout: 190)
+                let result = try JSONDecoder().decode(ModelTestResult.self, from: data)
+                if !Task.isCancelled { testMessage = "样例翻译 · \(result.translation)" }
+            } catch {
+                if !Task.isCancelled { errorText = error.localizedDescription }
+            }
+        }
+    }
+
+    private func saveModel() {
+        saving = true
+        let path = draft.modelID.map { "/api/models/\($0)" } ?? "/api/models"
+        let method = draft.modelID == nil ? "POST" : "PATCH"
+        let body = draft.payload
+        Task {
+            let ok = await store.mutate(path, method: method, body: body)
+            saving = false
+            if ok { dismiss() }
+            else { errorText = store.lastError; store.lastError = nil }
+        }
     }
 }
 private struct IntegrationsPreferences: View {

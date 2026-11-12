@@ -5,10 +5,13 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { ensurePrivateData } from './config.js';
 import { Storage } from './storage.js';
-import { createAnalyzer } from './analyzer.js';
+import { createAnalyzer, ModelHTTPError, ModelTimeoutError } from './analyzer.js';
 import { normalizeIncomingEvent, normalizeCapturePolicy, isProjectAllowed, extractLearningText, redactSensitive } from './privacy.js';
 import { ModelStore, toSafeModel, resolveTextConfig, validateBaseUrl } from './models.js';
 
+import { TEXT_MODEL_PRESETS } from './model-presets.js';
+
+const MODEL_TEST_SAMPLE = '我想把这个问题解释得更清楚。';
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const MAX_BODY_BYTES = 128 * 1024;
 const MIME = {
@@ -76,7 +79,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
   let running = false;
   let closed = false;
   let activeJob = null;
-  const ttsControllers = new Set();
+  const outboundControllers = new Set();
   // Migrate the obsolete preference; old Auto/Demo values must never enable fake lessons.
   db.setSetting('learningMode', 'live');
   const capturePolicy = () => normalizeCapturePolicy(db.getSetting('capturePolicy', {}));
@@ -175,7 +178,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
         const current = textConfig();
         return json(res, 200, {
           mode: current.mode,
-          configurationMessage: current.mode === 'live' ? null : '请先接入模型：在设置中配置有效的文本模型地址和 API Key。',
+          configurationMessage: current.mode === 'live' ? null : '请先接入模型：在设置中填写地址、模型和认证方式。',
           capturePolicy: capturePolicy(),
           model: current.model,
           paused: db.getPaused(),
@@ -202,7 +205,37 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
       }
 
       if (req.method === 'GET' && pathname === '/api/models') {
-        return json(res, 200, models.list());
+        return json(res, 200, { ...models.list(), textPresets: TEXT_MODEL_PRESETS });
+      }
+
+      if (req.method === 'POST' && pathname === '/api/models/test') {
+        const model = models.prepareTextTest(await readJson(req));
+        if (closed || res.destroyed) return;
+        const controller = new AbortController();
+        const disconnect = () => controller.abort();
+        outboundControllers.add(controller);
+        res.on('close', disconnect);
+        try {
+          const lesson = await createAnalyzer(model, requestFetch)(MODEL_TEST_SAMPLE, { signal: controller.signal });
+          if (res.destroyed) return;
+          if (!/\b[A-Za-z]{2,}\b/.test(lesson.translation) || /\p{Script=Han}/u.test(lesson.translation)) {
+            return json(res, 502, { error: '学习卡没有返回这条样例的英文翻译。请换一个模型。' });
+          }
+          return json(res, 200, { translation: lesson.translation });
+        } catch (error) {
+          if (res.destroyed) return;
+          if (error instanceof ModelHTTPError) {
+            return json(res, 502, { error: `模型服务返回 HTTP ${error.upstreamStatus}。请检查地址、模型 ID 和权限。` });
+          }
+          if (error instanceof ModelTimeoutError) {
+            return json(res, 504, { error: `模型在 ${error.seconds} 秒内未返回学习卡。` });
+          }
+          return json(res, 502, { error: '无法调用模型，或模型未返回有效的学习卡。请检查连接或换一个模型。' });
+        } finally {
+          outboundControllers.delete(controller);
+          res.off('close', disconnect);
+        }
+        return;
       }
 
       if (req.method === 'POST' && pathname === '/api/models') {
@@ -294,7 +327,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
         }
 
         const controller = new AbortController();
-        ttsControllers.add(controller);
+        outboundControllers.add(controller);
         const disconnect = () => { if (!res.writableEnded) controller.abort(); };
         res.on('close', disconnect);
         const timeout = setTimeout(() => controller.abort(), 20000);
@@ -332,7 +365,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
           controller.abort();
           if (ttsRes?.body && !ttsRes.bodyUsed) void ttsRes.body.cancel().catch(() => {});
           res.off('close', disconnect);
-          ttsControllers.delete(controller);
+          outboundControllers.delete(controller);
         }
       }
 
@@ -437,8 +470,8 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
     close() {
       closed = true;
       cancelActive();
-      for (const controller of ttsControllers) controller.abort();
-      ttsControllers.clear();
+      for (const controller of outboundControllers) controller.abort();
+      outboundControllers.clear();
       for (const client of clients) client.end();
       clients.clear();
       return new Promise((resolve) =>

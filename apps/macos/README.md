@@ -8,7 +8,7 @@ The UI is native; the learning engine is still the existing Node + SQLite servic
 
 - Native learning history shows captured original text and source Agent, never substitutes the generated translation. Source filtering combines with search; counts and filtering apply to the loaded latest 150 records. Translation remains in lesson detail.
 - Four explanation tabs, correction cards, knowledge grid, retry and confirmed deletion.
-- Native model management (text/speech), active-model selection, server connection settings and explicit login-start setting.
+- Native model management (text/speech), shared text provider presets, a test before saving, active-model selection, server connection settings and explicit login-start setting.
 - **DynamicNotchKit** renders the learning island. Default: top-attached notch; settings also offer automatic screen detection and floating presentation. Hover preview, click to pin, copy/play/open lesson, non-key panel, selected display, sleep/session hiding and reduced-motion handling are included.
 - Non-notched displays retain a compact entry even when the menu bar auto-hides; floating mode uses a small content view instead of the library's hiding `compact()` operation.
 - Menu-bar entry points; closing the main window leaves the companion running. Quit stops only a child engine this app started.
@@ -44,7 +44,7 @@ GitHub Actions **Native macOS** builds/tests on macOS and uploads the self-conta
 
 1. Quit the old app before replacing it. Place the new `.app` at the SAME stable location such as `/Applications` before using existing Hooks. Moving the app requires reinstalling Hooks; running both copies is not supported.
 2. Connect to your existing service, or choose **Start built-in engine**. An occupied/non-Sidecar port is not overwritten or killed.
-3. Configure a text model in Settings → Models. With the embedded engine, restart it after configuring the first key to switch Demo/Live status. Unconfigured native-owned analysis fails with a configuration message rather than generating fabricated demo results for real prompts.
+3. In Settings → Models, choose a service preset or enter a compatible endpoint, enter its model ID, then click **测试模型** and save. Activate the model if another model is selected. With the embedded engine, a saved and active configuration resumes queued lessons without restarting. Ollama and other unauthenticated loopback services can use the local no-auth option.
 4. Settings → Agent integration: choose agent and scope, review the confirmation, then install. Existing JSON is preserved and backed up. Trust the Hook in your Agent and send a real prompt to verify. Installation alone does not prove capture works.
 5. Settings → General → Island style: choose top-attached notch, automatic detection, or floating. Hover or pin for quick access; open full explanation for detail. Hide the island without pausing capture. **Pause capture ignores new input**, matching the existing server semantics.
 6. In learning history, select the source Agent menu above the list. Search intersects with that filter; clear filters from the empty state when needed. Right-click a record to copy its original text.

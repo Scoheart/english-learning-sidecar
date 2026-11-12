@@ -1,10 +1,10 @@
 name: Native macOS
 on:
   pull_request:
-    paths: ['apps/macos/**', '.github/workflows/macos-native.yml', 'src/lib/**']
+    paths: ['apps/macos/**', '.github/workflows/macos-native.yml', 'src/**', 'tests/**', 'package*.json', 'vite.config.ts']
   push:
     branches: [main]
-    paths: ['apps/macos/**', '.github/workflows/macos-native.yml', 'src/lib/**']
+    paths: ['apps/macos/**', '.github/workflows/macos-native.yml', 'src/**', 'tests/**', 'package*.json', 'vite.config.ts']
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+      - run: npm ci
       - name: Native tests and compile
         run: |
           swift --version
@@ -26,7 +28,9 @@ jobs:
       - name: Existing engine regression tests
         run: npm test
       - name: Build self-contained app
-        run: bash apps/macos/scripts/build-app.sh --bundle-engine
+        run: |
+          npm run build
+          bash apps/macos/scripts/build-app.sh --bundle-engine
       - name: Packaged engine smoke tests
         run: python3 apps/macos/scripts/test-engine.py "apps/macos/dist/English Sidecar.app/Contents/Resources/engine"
       - uses: actions/upload-artifact@v4

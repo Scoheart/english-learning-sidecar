@@ -313,3 +313,76 @@ test('browser disconnect aborts the upstream TTS signal', async t => {
   await pending;
   await until(() => upstreamSignal.aborted);
 });
+
+test('model connection test uses the edited credentials and fixed sample without saving anything', async t => {
+  const calls = [];
+  const s = await fixture(t, { apiKey: 'fixture-original' }, { requestFetch: async (url, options) => {
+    calls.push({ url, headers: new Headers(options.headers), payload: JSON.parse(options.body) });
+    return Response.json({ choices: [{ message: { content: JSON.stringify(lesson) } }] });
+  } });
+  const before = fs.readFileSync(path.join(s.dir, 'models.json'), 'utf8');
+  const saved = s.app.models.getActiveTextModel();
+  const draft = { id: saved.id, name: 'Edit', kind: 'text', baseUrl: saved.baseUrl, model: 'new-model' };
+  const same = await s.call('/api/models/test', 'POST', { ...draft, input: 'Private caller text' });
+  assert.equal(same.response.status, 200);
+  assert.equal(same.body.translation, 'Explain this system.');
+  assert.equal(calls[0].headers.get('authorization'), 'Bearer fixture-original');
+  assert.equal(calls[0].payload.model, 'new-model');
+  assert.match(calls[0].payload.messages[1].content, /我想把这个问题解释得更清楚。/);
+  assert.doesNotMatch(calls[0].payload.messages[1].content, /Private caller text/);
+
+  const changed = { ...draft, baseUrl: 'https://new.invalid/v1' };
+  assert.equal((await s.call('/api/models/test', 'POST', changed)).response.status, 400);
+  assert.equal(calls.length, 1);
+  assert.equal((await s.call('/api/models/test', 'POST', { ...changed, apiKey: 'fixture-new' })).response.status, 200);
+  assert.equal(calls[1].url, 'https://new.invalid/v1/chat/completions');
+  assert.equal(calls[1].headers.get('authorization'), 'Bearer fixture-new');
+  assert.equal(fs.readFileSync(path.join(s.dir, 'models.json'), 'utf8'), before);
+  assert.equal((await s.call('/api/events')).body.events.length, 0);
+  assert.equal((await s.call('/api/knowledge')).body.knowledge.length, 0);
+});
+
+test('explicit keyless loopback configuration serves both model test and queued lessons without authorization', async t => {
+  const calls = [];
+  const s = await fixture(t, {}, { requestFetch: async (url, options) => {
+    calls.push({ url, headers: new Headers(options.headers) });
+    return Response.json({ choices: [{ message: { content: JSON.stringify(lesson) } }] });
+  } });
+  const config = { name: 'Local', kind: 'text', baseUrl: 'http://127.0.0.1:11434/v1', model: 'local-fixture', authMode: 'none' };
+  assert.equal((await s.call('/api/models/test', 'POST', { ...config, baseUrl: 'https://remote.invalid/v1' })).response.status, 400);
+  assert.equal((await s.call('/api/models', 'POST', { ...config, baseUrl: 'https://remote.invalid/v1' })).response.status, 400);
+  assert.equal(calls.length, 0);
+  const presets = (await s.call('/api/models')).body.textPresets;
+  assert.equal(presets.find(preset => preset.id === 'ollama')?.baseUrl, config.baseUrl);
+  assert.equal((await s.call('/api/models/test', 'POST', config)).response.status, 200);
+
+  const id = s.app.models.getActiveTextModel().id;
+  assert.equal((await s.call('/api/models/' + id, 'PATCH', config)).response.status, 200);
+  assert.equal((await s.call('/api/status')).body.mode, 'live');
+  const event = (await s.call('/api/events', 'POST', input('keyless-model'))).body.id;
+  await until(() => s.app.storage.getEvent(event)?.status === 'complete');
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.url, config.baseUrl + '/chat/completions');
+    assert.equal(call.headers.has('authorization'), false);
+  }
+});
+
+test('model test reports invalid lessons and upstream status without exposing raw upstream data', async t => {
+  const s = await fixture(t, {}, { requestFetch: async (_url, options) => {
+    const model = JSON.parse(options.body).model;
+    if (model === 'bad-key') return new Response('UPSTREAM-PRIVATE-ERROR', { status: 401 });
+    const content = model === 'echo' ? '{"translation":"我想把这个问题解释得更清楚。"}'
+      : '{"translation": UPSTREAM-PRIVATE-ERROR}';
+    return Response.json({ choices: [{ message: { content } }] });
+  } });
+  const config = { name: 'Fixture', kind: 'text', baseUrl: 'https://example.invalid/v1', apiKey: 'fixture' };
+  const badKey = await s.call('/api/models/test', 'POST', { ...config, model: 'bad-key' });
+  assert.equal(badKey.response.status, 502);
+  assert.match(badKey.body.error, /401/);
+  const badLesson = await s.call('/api/models/test', 'POST', { ...config, model: 'bad-json' });
+  assert.equal(badLesson.response.status, 502);
+  assert.match(badLesson.body.error, /学习卡/);
+  assert.equal((await s.call('/api/models/test', 'POST', { ...config, model: 'echo' })).response.status, 502);
+  assert.doesNotMatch(JSON.stringify([badKey.body, badLesson.body]), /UPSTREAM-PRIVATE-ERROR/);
+});
