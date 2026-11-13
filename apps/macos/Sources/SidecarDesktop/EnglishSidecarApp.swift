@@ -8,7 +8,6 @@ import AppKit
         WindowGroup("English Sidecar", id: "learning") {
             MainView(store: delegate.store)
                 .frame(minWidth: 960, minHeight: 620)
-                .preferredColorScheme(delegate.store.colorScheme)
         }
         .defaultSize(width: 1260, height: 800)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
@@ -51,7 +50,6 @@ import AppKit
 
         Settings {
             PreferencesView(store: delegate.store)
-                .preferredColorScheme(delegate.store.colorScheme)
         }
 
         MenuBarExtra("English Sidecar", systemImage: "book.closed.fill") {

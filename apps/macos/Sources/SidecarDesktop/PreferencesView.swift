@@ -65,7 +65,7 @@ struct PreferencesView: View {
             .background(StudioPalette.stageBackground)
         }
         .frame(width: 720, height: 640)
-        .preferredColorScheme(store.colorScheme)
+        .background(DesktopAppearance(colorScheme: store.colorScheme).frame(width: 0, height: 0))
         .alert(
             "操作未完成",
             isPresented: Binding(

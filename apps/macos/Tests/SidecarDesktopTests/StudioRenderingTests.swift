@@ -5,6 +5,71 @@ import SidecarCore
 @testable import SidecarDesktop
 
 final class StudioRenderingTests: XCTestCase {
+    @MainActor func testOpenWindowsFollowLiveAppearanceChanges() async throws {
+        let app = NSApplication.shared
+        guard !NSScreen.screens.isEmpty else { throw XCTSkip("Requires a WindowServer display") }
+        let defaults = UserDefaults.standard
+        let previousPreference = defaults.object(forKey: "native.appearance")
+        let previousAppearance = app.appearance
+        defer {
+            defaults.set(previousPreference, forKey: "native.appearance")
+            app.appearance = previousAppearance
+        }
+
+        for systemIsDark in [false, true] {
+            // Set only the inherited system appearance, never window.appearance.
+            app.appearance = NSAppearance(named: systemIsDark ? .darkAqua : .aqua)
+            for startup in ["light", "dark"] {
+                defaults.set(startup, forKey: "native.appearance")
+                let store = DesktopStore()
+                defer { store.api.close(); store.speech.stop() }
+                let roots = [
+                    AnyView(MainView(store: store).frame(width: 960, height: 640)),
+                    AnyView(PreferencesView(store: store))
+                ]
+                let hosts = roots.map { NSHostingView(rootView: $0) }
+                let windows = hosts.map { host in
+                    let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 960, height: 640), styleMask: [.titled], backing: .buffered, defer: false)
+                    window.isReleasedWhenClosed = false
+                    window.contentView = host
+                    window.orderFront(nil)
+                    return window
+                }
+                defer {
+                    for window in windows {
+                        window.orderOut(nil)
+                        window.contentView = nil
+                        window.close()
+                    }
+                }
+                // Reuse both hosts throughout; rebuilding them conceals stale theme state.
+                for selection in [startup, "dark", "light", "system", "dark", "system"] {
+                    store.appearance = selection
+                    try await Task.sleep(nanoseconds: 150_000_000)
+                    let expectedDark = selection == "dark" || (selection == "system" && systemIsDark)
+                    XCTAssertEqual(defaults.string(forKey: "native.appearance"), selection)
+                    for host in hosts {
+                        XCTAssertEqual(host.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]), expectedDark ? .darkAqua : .aqua)
+                        if selection == "system" {
+                            XCTAssertNil(host.window?.appearance, "System mode must clear the window override")
+                        }
+                        host.layoutSubtreeIfNeeded()
+                        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                        host.cacheDisplay(in: host.bounds, to: bitmap)
+                        // The left edge is the sidebar/stage canvas, not text or a control.
+                        let pixel = try XCTUnwrap(bitmap.colorAt(x: 2, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+                        let brightness = (pixel.redComponent + pixel.greenComponent + pixel.blueComponent) / 3
+                        if expectedDark {
+                            XCTAssertLessThan(brightness, 0.25, "Dark canvas for \(selection), startup \(startup)")
+                        } else {
+                            XCTAssertGreaterThan(brightness, 0.8, "Light canvas for \(selection), startup \(startup)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     @MainActor func testWorkspaceRendersCleanOriginalAtNarrowAndWideSizes() async throws {
         _ = NSApplication.shared
         guard !NSScreen.screens.isEmpty else { throw XCTSkip("Requires a WindowServer display") }

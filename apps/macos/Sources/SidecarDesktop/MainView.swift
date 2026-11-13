@@ -36,7 +36,7 @@ struct MainView: View {
                 .background(StudioPalette.stageBackground)
         }
         .background(StudioPalette.background)
-        .preferredColorScheme(store.colorScheme)
+        .background(DesktopAppearance(colorScheme: store.colorScheme).frame(width: 0, height: 0))
         .onAppear {
             store.revealMain = {
                 openWindow(id: "learning")

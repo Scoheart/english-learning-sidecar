@@ -59,6 +59,7 @@ import {
 import { ExampleAttribution, VocabularyDetails, type LearningExample, type VocabularyItem } from '@/components/vocabulary-details';
 import { VocabularyHeading, VocabularyCoreMeanings } from '@/components/vocabulary-summary';
 import { CollectionView } from '@/components/collection-view';
+import { ProjectCaptureSettings, type CaptureProject } from '@/components/project-capture-settings';
 import { FavoriteButton, FavoriteNotice, favoriteKey, type FavoriteInput, type FavoriteItem, type FavoriteFeedback } from '@/components/favorite-button';
 
 interface SentenceConstituent {
@@ -123,6 +124,7 @@ interface SidecarEvent {
 interface SidecarStatus {
   mode: 'live' | 'unconfigured';
   capturePolicy: { mode: 'all' | 'allowlist'; allowedProjects: string[]; excludedProjects: string[] };
+  captureProjects?: CaptureProject[];
   model: string;
   paused: boolean;
   activeTextModel?: SettingsModel | null;
@@ -197,6 +199,8 @@ export default function App() {
   const [purgeKnowledge, setPurgeKnowledge] = useState(false);
   const [modelDeleteTarget, setModelDeleteTarget] = useState<string | null>(null);
   const [captureDraft, setCaptureDraft] = useState<SidecarStatus['capturePolicy'] | null>(null);
+  const [captureProjectsDraft, setCaptureProjectsDraft] = useState<CaptureProject[]>([]);
+  const [directoryPending, setDirectoryPending] = useState(false);
   const [pausedDraft, setPausedDraft] = useState(false);
   const [modelDraft, setModelDraft] = useState<SettingsModelDraft>({ models: [], activeTextId: null, activeSpeechId: null });
 
@@ -455,6 +459,8 @@ export default function App() {
     if (mutationLock.current) return;
     setSettingsOpen(false);
     setCaptureDraft(null);
+    setCaptureProjectsDraft([]);
+    setDirectoryPending(false);
     setModelDraft({ models: [], activeTextId: null, activeSpeechId: null });
     setEditingModel(null);
     setModelDeleteTarget(null);
@@ -462,7 +468,8 @@ export default function App() {
     setMutationError(null);
   };
   const handleSaveSettings = () => mutate(async () => {
-    if (!captureDraft) return;
+    if (!captureDraft || directoryPending) return;
+    if (captureProjectsDraft.some(project => project.agents.length === 0)) throw new Error('请为每个项目至少选择一个 Agent，或移除该项目。');
     const nextModels = editingModel ? stageSettingsModel(modelDraft, editingModel) : modelDraft;
     setModelDraft(nextModels);
     if (editingModel) setEditingModel(null);
@@ -470,11 +477,14 @@ export default function App() {
     await request('/api/settings', 'POST', {
       paused: pausedDraft,
       capturePolicy: { ...captureDraft, allowedProjects: captureDraft.allowedProjects.map(p => p.trim()).filter(Boolean), excludedProjects: captureDraft.excludedProjects.map(p => p.trim()).filter(Boolean) },
+      captureProjects: captureProjectsDraft,
       modelDraft: nextModels,
     });
     setSettingsOpen(false);
     setEditingModel(null);
     setCaptureDraft(null);
+    setCaptureProjectsDraft([]);
+    setDirectoryPending(false);
     setModelDraft({ models: [], activeTextId: null, activeSpeechId: null });
     await refreshData();
   });
@@ -534,7 +544,9 @@ export default function App() {
     setSettingsTab('text');
     setEditingModel(null);
     setFormError(null);
-    setCaptureDraft(structuredClone(status?.capturePolicy || { mode: 'all', allowedProjects: [], excludedProjects: [] }));
+    setCaptureDraft(structuredClone(status?.capturePolicy || { mode: 'allowlist', allowedProjects: [], excludedProjects: [] }));
+    setCaptureProjectsDraft(structuredClone(status?.captureProjects || []));
+    setDirectoryPending(false);
     setPausedDraft(status?.paused || false);
     setModelDraft({ models: models.map(m => ({ ...m })), activeTextId, activeSpeechId });
     setMutationError(null);
