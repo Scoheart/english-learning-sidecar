@@ -21,7 +21,7 @@ const render = (Component, props) => renderToStaticMarkup(React.createElement(Co
 const favorite = { id: 'favorite-1', term: 'look up', meaning: '查找', category: 'vocabulary', created_at: '2026-01-01', event_id: 'event-1' };
 const props = {
   favorites: [favorite], search: '', revision: 0, busy: false,
-  renderFavorite: item => React.createElement(FavoriteButton, { item, saved: true, onSave() {} }),
+  renderFavorite: item => React.createElement(FavoriteButton, { item, saved: true, onToggle() {} }),
   onRemove() {}, onOpenEvent() {}, onSpeak() {}, onGoToPrompts() {},
 };
 
@@ -39,16 +39,45 @@ test('favorites show star, Chinese categories and no encounter counts', () => {
   assert.doesNotMatch(html, /出现 19 次|查询 19 次|× seen/);
 });
 
-test('saved star remains an enabled action with explicit duplicate explanation', () => {
-  const html = render(FavoriteButton, { item: favorite, saved: true, onSave() {} });
-  assert.ok(html.includes('aria-label="已收藏 look up"'));
-  assert.ok(html.includes('title="已在收藏夹，无需重复收藏"'));
+test('saved star exposes an enabled cancel action and pressed state', () => {
+  const html = render(FavoriteButton, { item: favorite, saved: true, onToggle() {} });
+  assert.ok(html.includes('aria-label="取消收藏 look up"'));
+  assert.ok(html.includes('title="取消收藏"'));
+  assert.ok(html.includes('aria-pressed="true"'));
   assert.ok(html.includes('fill-current'));
   assert.doesNotMatch(html, /disabled=""/);
-  const notice = render(FavoriteNotice, { feedback: { kind: 'duplicate', message: '已在收藏夹，无需重复收藏' } });
-  assert.ok(notice.includes('role="status"'));
-  assert.ok(notice.includes('aria-live="polite"'));
-  assert.ok(notice.includes('已在收藏夹，无需重复收藏'));
+});
+
+test('unsaved star exposes the save action and passes the item on either toggle', () => {
+  const html = render(FavoriteButton, { item: favorite, saved: false, onToggle() {} });
+  assert.ok(html.includes('aria-label="收藏 look up"'));
+  assert.ok(html.includes('aria-pressed="false"'));
+  assert.doesNotMatch(html, /fill-current/);
+  for (const saved of [false, true]) {
+    const calls = [];
+    FavoriteButton({ item: favorite, saved, onToggle: item => calls.push(item) }).props.onClick();
+    assert.deepEqual(calls, [favorite]);
+  }
+  assert.match(render(FavoriteButton, { item: favorite, saved: true, disabled: true, onToggle() {} }), /disabled=""/);
+});
+
+test('favorite feedback is a compact, click-through fixed toast outside document flow', () => {
+  for (const kind of ['success', 'removed', 'error']) {
+    const notice = render(FavoriteNotice, { feedback: { kind, message: '测试反馈' } });
+    for (const text of ['role="status"', 'aria-live="polite"', 'aria-atomic="true"', 'fixed', 'top-0', 'pointer-events-none', 'safe-area-inset-top', 'max-w-sm', '测试反馈']) {
+      assert.ok(notice.includes(text), text);
+    }
+    assert.doesNotMatch(notice, /sticky|bottom-0|bg-background|role="dialog"/);
+    const expected = {
+      success: ['bg-primary/85', 'text-primary-foreground', 'lucide-star', 'fill-current'],
+      removed: ['bg-amber-800/85', 'text-amber-50', 'dark:bg-amber-400/85', 'dark:text-amber-950', 'lucide-star-off'],
+      error: ['bg-destructive/85', 'text-destructive-foreground', 'lucide-circle-alert'],
+    };
+    for (const text of expected[kind]) assert.ok(notice.includes(text), `${kind}: ${text}`);
+  }
+  const empty = render(FavoriteNotice, { feedback: null });
+  assert.ok(empty.includes('role="status"'), 'live region stays mounted between notifications');
+  assert.doesNotMatch(empty, /<p/);
 });
 
 test('history cards distinguish query counts and term encounters with complete-analysis navigation', () => {

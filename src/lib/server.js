@@ -10,6 +10,7 @@ import { normalizeIncomingEvent, normalizeCapturePolicy, isProjectAllowed, extra
 import { ModelStore, toSafeModel, resolveTextConfig, validateBaseUrl } from './models.js';
 
 import { TEXT_MODEL_PRESETS } from './model-presets.js';
+import { listDirectories, inspectProject, normalizeCaptureProjects, prepareHookPlans, applyHookPlans } from './local-projects.js';
 
 const MODEL_TEST_SAMPLE = '我想把这个问题解释得更清楚。';
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -73,7 +74,7 @@ function sameOrigin(req, port) {
   }
 }
 
-export function createSidecar(config, { analyzer, storage, modelStore, requestFetch = fetch, publicDir = PUBLIC } = {}) {
+export function createSidecar(config, { analyzer, storage, modelStore, requestFetch = fetch, publicDir = PUBLIC, localOptions = {} } = {}) {
   const token = ensurePrivateData(config);
   const db = storage || new Storage(config.dataDir);
   const models = modelStore || new ModelStore(config.dataDir, config);
@@ -174,6 +175,14 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
     }
 
     try {
+      if (req.method === 'GET' && pathname === '/api/local/directories') {
+        const requestedPath = url.searchParams.has('path') ? url.searchParams.get('path') : localOptions.homeDir;
+        return json(res, 200, listDirectories(requestedPath));
+      }
+      if (req.method === 'POST' && pathname === '/api/local/project') {
+        const body = await readJson(req);
+        return json(res, 200, inspectProject(body?.path, localOptions));
+      }
       if (req.method === 'GET' && pathname === '/api/status') {
         const activeText = models.getActiveTextModel();
         const activeSpeech = models.getActiveSpeechModel();
@@ -182,6 +191,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
           mode: current.mode,
           configurationMessage: current.mode === 'live' ? null : '请先接入模型：在设置中填写地址、模型和认证方式。',
           capturePolicy: capturePolicy(),
+          captureProjects: db.getSetting('captureProjects', []),
           model: current.model,
           paused: db.getPaused(),
           stats: db.stats(),
@@ -298,6 +308,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
       if (req.method === 'GET' && pathname === '/api/settings') {
         return json(res, 200, {
           paused: db.getPaused(), capturePolicy: capturePolicy(),
+          captureProjects: db.getSetting('captureProjects', []),
           ...models.list(),
         });
       }
@@ -313,28 +324,45 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
         if (hasDraft && selectionChanged) return json(res, 400, { error: 'modelDraft cannot be combined with top-level active model IDs' });
         const previousModels = hasDraft || selectionChanged ? models.load() : null;
         // Complete all draft validation before opening the SQL transaction or saving any models.
-        const nextModels = hasDraft ? models.prepareDraft(body.modelDraft, previousModels) : null;
+        let nextModels = hasDraft ? models.prepareDraft(body.modelDraft, previousModels) : null;
+        if (selectionChanged) {
+          nextModels = structuredClone(previousModels);
+          for (const [field, kind] of [['activeTextId', 'text'], ['activeSpeechId', 'speech']]) {
+            if (!Object.hasOwn(body, field)) continue;
+            const id = body[field];
+            if (id !== null && (typeof id !== 'string' || !nextModels.models.some(model => model.id === id && model.kind === kind))) throw new Error(`Invalid active ${kind} model`);
+            nextModels[field] = id;
+          }
+        }
+        const nextProjects = body.captureProjects !== undefined ? normalizeCaptureProjects(body.captureProjects) : null;
+        const hookPlans = nextProjects ? prepareHookPlans(nextProjects, { dataDir: config.dataDir, port: actualPort }) : [];
         db.db.exec('BEGIN');
         let modelSaved = false;
+        let rollbackHooks = () => {};
         try {
+          rollbackHooks = applyHookPlans(hookPlans);
           if (hasDraft || selectionChanged) {
             modelSaved = true; // Also restore the snapshot if a file write itself fails partway.
-            if (hasDraft) models.save(nextModels);
-            else models.selectActive(body); // Validates both IDs before saving either.
+            models.save(nextModels);
           }
           if (body.learningMode !== undefined) db.setSetting('learningMode', body.learningMode);
           if (nextPolicy) db.setSetting('capturePolicy', nextPolicy);
+          if (nextProjects) db.setSetting('captureProjects', nextProjects);
           if (typeof body.paused === 'boolean') db.setPaused(body.paused);
           db.db.exec('COMMIT');
         } catch (error) {
           try { db.db.exec('ROLLBACK'); }
-          finally { if (modelSaved) models.save(previousModels); }
+          finally {
+            try { rollbackHooks(); }
+            finally { if (modelSaved) models.save(previousModels); }
+          }
           throw error;
         }
         broadcast();
         schedule();
         return json(res, 200, {
           paused: db.getPaused(), capturePolicy: capturePolicy(),
+          captureProjects: db.getSetting('captureProjects', []),
           ...models.list(),
         });
       }

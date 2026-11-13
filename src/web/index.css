@@ -70,6 +70,33 @@
   }
 }
 
+/* Learning navigation shares the sidebar's indigo accent without white pills. */
+@layer components {
+  .learning-tabs [role="tab"] {
+    @apply min-h-10 whitespace-normal border-0 px-3 py-2 text-sm leading-5 shadow-none;
+  }
+
+  .learning-tabs [role="tab"][data-state="active"] {
+    @apply bg-accent/90 font-semibold text-primary shadow-none;
+  }
+
+  .learning-tabs [role="tab"][data-state="inactive"]:hover {
+    @apply bg-accent/50 text-accent-foreground shadow-none;
+  }
+
+  .relation-tabs [role="tab"] {
+    @apply border-0 shadow-none;
+  }
+
+  .relation-tabs [role="tab"][data-state="active"] {
+    @apply bg-primary/15 font-semibold text-primary shadow-none;
+  }
+
+  .relation-tabs [role="tab"][data-state="inactive"]:hover {
+    @apply bg-primary/10 text-primary;
+  }
+}
+
 /* Dictionary headword & literary English display serif/humanist stack */
 .font-editorial {
   font-family: "Charter", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "SF Pro Display", -apple-system, serif;

@@ -54,10 +54,10 @@ import {
   StyledCheckbox,
   getConstituentTheme,
   getCorrectionStatusMeta,
-  getPosBadgeStyle,
 } from '@/components/studio-elements';
 
 import { ExampleAttribution, VocabularyDetails, type LearningExample, type VocabularyItem } from '@/components/vocabulary-details';
+import { VocabularyHeading, VocabularyCoreMeanings } from '@/components/vocabulary-summary';
 import { CollectionView } from '@/components/collection-view';
 import { FavoriteButton, FavoriteNotice, favoriteKey, type FavoriteInput, type FavoriteItem, type FavoriteFeedback } from '@/components/favorite-button';
 
@@ -407,32 +407,40 @@ export default function App() {
     await request(`/api/events/${encodeURIComponent(id)}/${action}`, 'POST');
     await refreshData();
   });
-  const handleSaveFavorite = (item: FavoriteInput) => {
-    if (favoriteKeys.has(favoriteKey(item))) {
-      setFavoriteFeedback({ kind: 'duplicate', message: '已在收藏夹，无需重复收藏' });
-      return;
-    }
-    return mutate(async () => {
-      setFavoriteFeedback(null);
-      try {
-        const response = await request('/api/favorites', 'POST', item);
-        const data: { favorite: FavoriteItem; duplicate: boolean; message: string } = await response.json();
+  useEffect(() => {
+    if (!favoriteFeedback) return;
+    const timer = window.setTimeout(() => setFavoriteFeedback(null), favoriteFeedback.kind === 'error' ? 5000 : 2500);
+    return () => window.clearTimeout(timer);
+  }, [favoriteFeedback]);
+
+  const handleToggleFavorite = (item: FavoriteInput) => mutate(async () => {
+    const saved = favorites.find(candidate => favoriteKey(candidate) === favoriteKey(item));
+    setFavoriteFeedback(null);
+    try {
+      if (saved) {
+        await request(`/api/favorites/${encodeURIComponent(saved.id)}`, 'DELETE');
         refreshGeneration.current += 1;
-        setFavorites(prev => [...prev.filter(saved => saved.id !== data.favorite.id), data.favorite]);
-        setFavoriteFeedback({ kind: data.duplicate ? 'duplicate' : 'success', message: data.message });
-      } catch (error) {
-        setFavoriteFeedback({ kind: 'error', message: error instanceof Error ? error.message : '收藏失败，请重试。' });
+        setFavorites(prev => prev.filter(candidate => candidate.id !== saved.id));
+        setFavoriteFeedback({ kind: 'removed', message: '已取消收藏' });
+      } else {
+        const response = await request('/api/favorites', 'POST', item);
+        const data: { favorite: FavoriteItem } = await response.json();
+        refreshGeneration.current += 1;
+        setFavorites(prev => [...prev.filter(candidate => candidate.id !== data.favorite.id), data.favorite]);
+        setFavoriteFeedback({ kind: 'success', message: '已加入收藏' });
       }
-    });
-  };
-  const renderFavorite = (item: FavoriteInput) => <FavoriteButton item={item} saved={favoriteKeys.has(favoriteKey(item))} disabled={busy} onSave={handleSaveFavorite} />;
+    } catch (error) {
+      setFavoriteFeedback({ kind: 'error', message: error instanceof Error ? error.message : saved ? '取消收藏失败，请重试。' : '收藏失败，请重试。' });
+    }
+  });
+  const renderFavorite = (item: FavoriteInput) => <FavoriteButton item={item} saved={favoriteKeys.has(favoriteKey(item))} disabled={busy} onToggle={handleToggleFavorite} />;
   const handleRemoveFavorite = () => mutate(async () => {
     if (!favoriteDeleteTarget) return;
     await request(`/api/favorites/${encodeURIComponent(favoriteDeleteTarget.id)}`, 'DELETE');
     refreshGeneration.current += 1;
     setFavorites(prev => prev.filter(item => item.id !== favoriteDeleteTarget.id));
     setFavoriteDeleteTarget(null);
-    setFavoriteFeedback({ kind: 'success', message: '已取消收藏，History 中的记录仍会保留。' });
+    setFavoriteFeedback({ kind: 'removed', message: '已取消收藏，History 中的记录仍会保留。' });
   });
   const handleOpenHistoryEvent = (id: string) => mutate(async () => {
     const response = await request(`/api/events/${encodeURIComponent(id)}`, 'GET');
@@ -680,7 +688,7 @@ export default function App() {
             <div className="space-y-1 px-2 py-2 text-xs text-muted-foreground">
               <p className="leading-relaxed">
                 {mainMode === 'favorites'
-                  ? `已收藏 ${favorites.length} 项。点击分析内容旁的星星，可加入收藏；相同内容不会重复保存。`
+                  ? `已收藏 ${favorites.length} 项。点击星星加入收藏，再次点击可取消收藏。`
                   : 'History 自动保存所有查询与分析，并累计单词、语法和例句的出现次数。'}
               </p>
             </div>
@@ -709,13 +717,11 @@ export default function App() {
           </div>
         )}
         {mutationError && <div role="alert" className="mx-10 mt-4 rounded-md bg-destructive/15 p-3 text-xs text-destructive">{mutationError}</div>}
-        <div className="sticky top-0 z-10 mx-auto w-full max-w-[1600px] px-5 sm:px-6 lg:px-8"><FavoriteNotice feedback={favoriteFeedback} /></div>
         {mainMode === 'feed' ? (
           selectedEvent ? (
             <div key={selectedEvent.id} className="animate-stage-in mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
               {/* 1. Prompt detail: original input followed by its English translation */}
               <Card className="surface-card overflow-hidden border-border/80 shadow-xs">
-                <div className="h-1 w-full bg-gradient-to-r from-indigo-500/80 via-sky-500/70 to-emerald-500/75" />
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 pb-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <TaskStatusBadge status={selectedEvent.status} />
@@ -885,17 +891,17 @@ export default function App() {
               {/* 2. Systematic 4-Layer Progressive Disclosure Tabs: 字/词 · 句 · 段 · 练 */}
               {analysis && (
                 <Tabs defaultValue="lexis" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4 sm:w-auto sm:inline-flex">
-                    <TabsTrigger value="lexis" className="text-xs">
+                  <TabsList className="learning-tabs grid h-auto w-full grid-cols-4 gap-1 border-0 bg-card p-1.5 sm:w-auto sm:inline-flex">
+                    <TabsTrigger value="lexis">
                       字与词
                     </TabsTrigger>
-                    <TabsTrigger value="sentence" className="text-xs">
+                    <TabsTrigger value="sentence">
                       句法拆解
                     </TabsTrigger>
-                    <TabsTrigger value="discourse" className="text-xs">
+                    <TabsTrigger value="discourse">
                       篇章成段
                     </TabsTrigger>
-                    <TabsTrigger value="examples" className="text-xs">
+                    <TabsTrigger value="examples">
                       实战举一反三
                     </TabsTrigger>
                   </TabsList>
@@ -908,27 +914,7 @@ export default function App() {
                           <div className="h-0.5 w-full bg-gradient-to-r from-indigo-500/70 via-amber-500/60 to-violet-500/70" />
                           <CardHeader className="pb-2.5 pt-4">
                             <div className="flex items-start justify-between gap-2">
-                              <div className="space-y-1">
-                                <div className="flex flex-wrap items-baseline gap-2">
-                                  <CardTitle className="font-editorial text-lg font-bold tracking-tight text-foreground">
-                                    {v.term}
-                                  </CardTitle>
-                                  {v.pos && (
-                                    <span
-                                      className={`rounded border px-1.5 py-0 text-[10px] font-semibold ${getPosBadgeStyle(
-                                        v.pos,
-                                      )}`}
-                                    >
-                                      {v.pos}
-                                    </span>
-                                  )}
-                                </div>
-                                {v.phonetic && (
-                                  <span className="inline-block rounded bg-muted/80 px-1.5 py-0.5 font-phonetic text-[11px] text-muted-foreground">
-                                    {v.phonetic}
-                                  </span>
-                                )}
-                              </div>
+                              <VocabularyHeading vocabulary={v} />
                               <div className="flex shrink-0 items-center">
                                 {renderFavorite({ term: v.term, meaning: v.meaning, category: 'vocabulary', eventId: selectedEvent.id })}
                                 <Button
@@ -948,14 +934,7 @@ export default function App() {
                             className={`flex flex-1 flex-col gap-2.5 pt-0 text-xs ${singleVocabularyCard ? 'lg:grid lg:grid-cols-2 lg:items-start' : ''
                               }`}
                           >
-                                <div className="rounded-r-lg border-l-[3px] border-indigo-500 bg-indigo-500/[0.06] dark:bg-indigo-500/[0.11] px-2.5 py-2 space-y-1">
-                                  <span className="block text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                                    核心释义
-                                  </span>
-                                  <CardDescription className="text-xs font-semibold text-foreground">
-                                    {v.meaning}
-                                  </CardDescription>
-                                </div>
+                                <VocabularyCoreMeanings vocabulary={v} />
 
                                 {v.morphology && (
                                       <div className="rounded-r-lg border-l-[3px] border-amber-500 bg-amber-500/[0.06] dark:bg-amber-500/[0.10] px-2.5 py-2 space-y-1">
@@ -1226,7 +1205,7 @@ export default function App() {
                                                   <CardHeader className="pb-2">
                                                     <div className="flex items-start justify-between gap-2">
                                                       <div className="space-y-1.5">
-                                                        <span className="inline-block rounded bg-teal-500/12 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                                                        <span className="inline-block rounded bg-accent/70 px-1.5 py-0.5 font-phonetic text-[10px] font-bold text-primary">
                                                           EXAMPLE 0{idx + 1}
                                                         </span>
                                                         <CardTitle className="font-editorial text-[15px] font-semibold leading-snug text-foreground">
@@ -1248,7 +1227,7 @@ export default function App() {
                                                     </div>
                                                   </CardHeader>
                                                   <CardContent className={exampleCount === 1 ? 'md:pt-6' : undefined}>
-                                                    <p className="rounded-r-md border-l-2 border-teal-500/50 bg-teal-500/[0.05] pl-2.5 py-1 text-xs leading-relaxed text-foreground/85">
+                                                    <p className="rounded-r-md border-l-2 border-primary/25 bg-accent/40 pl-2.5 py-1 text-xs leading-relaxed text-foreground/85">
                                                       {ex.chinese}
                                                     </p>
                                                     <div className="mt-2 space-y-1">
@@ -1291,6 +1270,7 @@ export default function App() {
                               </main>
                               </TabsContent>
 
+                              <FavoriteNotice feedback={favoriteFeedback} />
                               <AlertDialog open={!!favoriteDeleteTarget} onOpenChange={(open) => { if (!busy && !open) setFavoriteDeleteTarget(null); }}>
                                 <AlertDialogContent aria-busy={busy}>
                                   <AlertDialogTitle className="text-base font-semibold text-balance">取消收藏？</AlertDialogTitle>
