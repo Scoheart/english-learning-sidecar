@@ -1352,27 +1352,14 @@ export default function App() {
 
                                     <Separator />
 
-                                    <div className="space-y-3 text-xs">
-                                      {captureDraft && <>
-                                        <label htmlFor="capture-policy" className="block font-medium">项目采集范围</label>
-                                        <Select
-                                          id="capture-policy"
-                                          aria-describedby="project-path-hint"
-                                          value={captureDraft.mode}
-                                          disabled={busy}
-                                          onValueChange={(mode) => setCaptureDraft({ ...captureDraft, mode: mode as 'all' | 'allowlist' })}
-                                          options={[
-                                            { value: 'all', label: '所有项目', description: '自动采集，排除名单中的目录除外' },
-                                            { value: 'allowlist', label: '仅允许名单', description: '只采集“允许的项目目录”中的内容' },
-                                          ]}
-                                        />
-                                        <p id="project-path-hint" className="text-muted-foreground">项目须填写本地绝对目录，每行一个。排除名单优先；仅允许名单模式会拒绝未知项目。</p>
-                                        <label htmlFor="allowed-projects" className="block font-medium">允许的项目目录</label>
-                                        <textarea id="allowed-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.allowedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, allowedProjects: e.target.value.split('\n') })} className="ui-textarea" />
-                                        <label htmlFor="excluded-projects" className="block font-medium">排除的项目目录</label>
-                                        <textarea id="excluded-projects" aria-describedby="project-path-hint" rows={3} disabled={busy} value={captureDraft.excludedProjects.join('\n')} onChange={(e) => setCaptureDraft({ ...captureDraft, excludedProjects: e.target.value.split('\n') })} className="ui-textarea" />
-                                      </>}
-                                    </div>
+                                    {captureDraft && <ProjectCaptureSettings
+                                      projects={captureProjectsDraft}
+                                      policy={captureDraft}
+                                      disabled={busy}
+                                      onProjectsChange={setCaptureProjectsDraft}
+                                      onPolicyChange={setCaptureDraft}
+                                      onPendingChange={setDirectoryPending}
+                                    />}
                                     <Separator />
                                     {/* Model Engine Display */}
                                     <div className="flex items-center justify-between">
@@ -1778,7 +1765,7 @@ export default function App() {
                                     {mutationError && <p role="alert" className="text-xs text-destructive">{mutationError}</p>}
                                     <div className="flex justify-end gap-2">
                                       <Button variant="outline" disabled={busy} onClick={closeSettings}>取消</Button>
-                                      <Button disabled={busy || !captureDraft || !status} onClick={handleSaveSettings}>{busy ? '提交中…' : '确定'}</Button>
+                                      <Button disabled={busy || directoryPending || !captureDraft || !status} onClick={handleSaveSettings}>{busy ? '保存并配置中…' : directoryPending ? '读取目录中…' : '确定'}</Button>
                                     </div>
                                   </div>
                                 </DialogContent>

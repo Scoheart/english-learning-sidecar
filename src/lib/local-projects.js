@@ -8,7 +8,7 @@ export const AGENTS = [
   { id: 'codex', name: 'Codex', config: '.codex/hooks.json' },
   { id: 'claude', name: 'Claude Code', config: '.claude/settings.json' },
   { id: 'cursor', name: 'Cursor', config: '.cursor/hooks.json' },
-  { id: 'grok', name: 'Grok', config: '.grok/hooks/english-sidecar.json' },
+  { id: 'grok', name: 'Grok Build', config: '.grok/hooks/english-sidecar.json' },
 ];
 const ADAPTER = fileURLToPath(new URL('./hook-adapter.cjs', import.meta.url));
 const LEGACY_ADAPTER = fileURLToPath(new URL('../../bin/hook.cjs', import.meta.url));

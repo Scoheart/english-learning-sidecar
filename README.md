@@ -60,7 +60,13 @@ Text models use OpenAI-compatible `/chat/completions`; speech models use `/audio
 
 ## Install an Agent Hook
 
-Install only in authorized workspaces. The installer defaults to the current project and previews changes unless `--apply` is supplied:
+Install only in authorized workspaces. In the Web UI, open **Settings → 项目与 Agent → 添加项目**. Browse directories on the computer running Sidecar, choose the project, and select Codex, Claude Code, Cursor and/or Grok Build. Detection checks project configuration directories, user configuration directories and executable names on `PATH`; it is a hint, not proof that an Agent is installed or supports the hook. Undetected agents can be selected manually.
+
+Nothing is written while browsing or selecting. **确定** saves the settings and installs the selected project hooks together; **取消** discards the draft. Existing JSON and unrelated handlers are preserved, changed files are backed up, and invalid JSON or symbolic links in configuration paths are refused. If saving fails, applied hook changes and settings are rolled back. Commands use the running engine's Node executable, data directory and port without embedding the ingest token. Keep the engine/application at a stable path and reinstall hooks after moving it or changing its port.
+
+Adding a project switches capture to **仅所选项目**. The advanced section retains the old all-project policy and exclusions. Unchecking an Agent or removing a project does **not** uninstall existing hooks; use project restrictions or exclusions to stop receiving that directory. Multiple agents, including compatibility-loaded hooks, may capture overlapping input. Agent approval/reload may still be necessary.
+
+The CLI installer remains available. It defaults to the current project and previews changes unless `--apply` is supplied:
 
 ```sh
 node bin/install-hooks.cjs codex
@@ -87,7 +93,7 @@ Settings includes a project capture policy:
 - Excluded directories take precedence; directory boundaries are respected (`/work/app` does not include `/work/app-other`).
 - Unknown projects are rejected in allowlist mode. Invalid or relative rules are rejected when saved.
 
-Hook/Pi adapters send a project path only to the local collector for this decision. Only its hash is stored on an event, not the original path. Matching is lexical: it does not resolve symlink aliases. Configure the paths your Agent actually reports; this is not a filesystem security sandbox.
+Hook/Pi adapters send a project path only to the local collector for this decision. Only its hash is stored on an event, not the original path. Selected project paths and Agent IDs are stored locally in settings so the integration choices can be restored; directory browsing does not send file contents to a model. Matching is lexical: it does not resolve symlink aliases. Configure the paths your Agent actually reports; this is not a filesystem security sandbox.
 
 Before persistence and model transmission, the collector extracts natural-language text, removes code fences, serialized blocks and recognizable code/log lines, and redacts common credential formats and email addresses. Session and turn identifiers are hashed. Skipped payloads retain a safe placeholder, not the original code/log text. Legacy queued events are filtered again before analysis. TTS input is filtered too.
 

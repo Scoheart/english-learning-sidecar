@@ -90,7 +90,7 @@ export function ProjectCaptureSettings({ projects, policy, disabled, onProjectsC
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setListing(null);
     try {
       const result = await localRequest<DirectoryListing>('/api/local/directories' + (path ? `?path=${encodeURIComponent(path)}` : ''), controller.signal);
       if (controller.signal.aborted) return;
@@ -107,7 +107,7 @@ export function ProjectCaptureSettings({ projects, policy, disabled, onProjectsC
     requestRef.current?.abort(); setLoading(false); setBrowser(null); setError(null);
   };
   const selectDirectory = async () => {
-    if (!listing || loading) return;
+    if (!listing || loading || pathInput.trim() !== listing.path || disabled) return;
     if (browser === 'exclude') {
       onPolicyChange({ ...policy, excludedProjects: [...new Set([...policy.excludedProjects, listing.path])] });
       closeBrowser(); return;
@@ -142,7 +142,7 @@ export function ProjectCaptureSettings({ projects, policy, disabled, onProjectsC
       <div className="flex items-center justify-between gap-2"><h4 className="font-medium">{browser === 'project' ? '选择项目目录' : '选择排除目录'}</h4><Button type="button" variant="ghost" size="icon" className="size-7" disabled={disabled} onClick={closeBrowser} aria-label="关闭目录浏览器"><X aria-hidden="true" /></Button></div>
       <p className="text-muted-foreground">浏览 Sidecar 所在电脑的目录，不会上传目录或文件。</p>
       <div className="flex gap-2">
-        <Input aria-label="本地目录路径" aria-describedby={error ? 'local-directory-error' : undefined} value={pathInput} disabled={locked} placeholder="输入绝对路径，或浏览下方文件夹" onChange={e => setPathInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (pathInput.trim()) void browse(pathInput.trim()); } }} className="min-w-0 text-xs" />
+        <Input aria-label="本地目录路径" aria-describedby={error ? 'local-directory-error' : undefined} value={pathInput} disabled={locked} placeholder="输入绝对路径，或浏览下方文件夹" onChange={e => { setPathInput(e.target.value); setError(null); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (pathInput.trim()) void browse(pathInput.trim()); } }} className="min-w-0 text-xs" />
         <Button type="button" variant="outline" size="sm" className="h-9" disabled={locked || !pathInput.trim()} onClick={() => void browse(pathInput.trim())}>前往</Button>
       </div>
       {listing && <>
@@ -153,17 +153,18 @@ export function ProjectCaptureSettings({ projects, policy, disabled, onProjectsC
           {!listing.directories.some(directory => directory.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase())) && <li className="px-2 py-4 text-muted-foreground">{filter ? '没有匹配的文件夹。' : '没有子目录，可直接选择当前目录。'}</li>}
         </ul>
       </>}
+      {listing && pathInput.trim() !== listing.path && <p role="status" className="text-muted-foreground">路径已更改，请点击「前往」或按 Enter 后再选择。</p>}
       {loading && <p role="status" className="text-muted-foreground">正在读取本地目录与 Agent…</p>}
       {error && <p id="local-directory-error" role="alert" className="text-destructive">{error}</p>}
       <div className="flex flex-wrap justify-end gap-2">
         {!listing && !loading && <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => void browse()}><RefreshCw aria-hidden="true" />重试</Button>}
         <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={closeBrowser}>取消选择</Button>
-        <Button type="button" size="sm" disabled={locked || !listing} onClick={() => void selectDirectory()}>选择当前目录</Button>
+        <Button type="button" size="sm" disabled={locked || !listing || pathInput.trim() !== listing.path} onClick={() => void selectDirectory()}>选择当前目录</Button>
       </div>
     </section>}
     {projects.length > 0 ? <div className="space-y-4">{projects.map(project => <ProjectAgentRow key={project.path} project={project} info={info[project.path]} disabled={locked} onChange={agents => onProjectsChange(projects.map(current => current.path === project.path ? { ...current, agents } : current))} onRemove={() => removeProject(project.path)} />)}</div> : !browser && <div className="border-y border-dashed py-5"><p className="font-medium">还没有添加项目</p><p className="mt-1 text-muted-foreground">添加项目目录，再勾选使用的 Agent；无需手动编辑配置文件。</p></div>}
     <p className="text-muted-foreground">点击底部「确定」后才写入所选 Agent 的配置；已有设置会保留，修改前自动备份。Agent 可能需要重新加载或确认信任 Hook。</p>
-    {projects.length > 0 && <p className="text-muted-foreground">移除项目不会删除已安装的 Hook；「仅所选项目」模式下，该目录将不再采集（其他已选父目录覆盖时除外）。</p>}
+    {projects.length > 0 && <p className="text-muted-foreground">取消勾选或移除项目不会卸载已安装的 Hook。要停止采集某目录，请移除该项目并使用「仅所选项目」，或将该目录加入排除范围。</p>}
     <details className="border-t pt-3">
       <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">高级采集范围{policy.mode === 'all' ? ' · 所有项目' : ' · 仅所选项目'}</summary>
       <div className="mt-3 space-y-3">
