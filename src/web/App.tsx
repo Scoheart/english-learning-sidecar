@@ -469,7 +469,6 @@ export default function App() {
   };
   const handleSaveSettings = () => mutate(async () => {
     if (!captureDraft || directoryPending) return;
-    if (captureProjectsDraft.some(project => project.agents.length === 0)) throw new Error('请为每个项目至少选择一个 Agent，或移除该项目。');
     const nextModels = editingModel ? stageSettingsModel(modelDraft, editingModel) : modelDraft;
     setModelDraft(nextModels);
     if (editingModel) setEditingModel(null);
@@ -1325,7 +1324,7 @@ export default function App() {
                                     // Let an open Select consume the first Escape before closing the dialog.
                                     if (document.querySelector('[role="combobox"][aria-expanded="true"]')) event.preventDefault();
                                   }}
-                                  aria-busy={busy} className="sm:max-w-xl max-h-[88dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
+                                  aria-busy={busy} className="sm:max-w-xl h-[88dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
                                   <DialogHeader>
                                     <DialogTitle className="text-base font-semibold">Preferences</DialogTitle>
                                     <DialogDescription className="text-xs">
@@ -1333,7 +1332,7 @@ export default function App() {
                                     </DialogDescription>
                                   </DialogHeader>
 
-                                  <div className="min-h-0 space-y-5 overflow-y-auto py-2 pr-1">
+                                  <div className="min-h-0 space-y-5 overflow-y-auto [scrollbar-gutter:stable] py-2 pr-1">
                                     {/* Capture Toggle */}
                                     <div className="flex items-center justify-between gap-4">
                                       <div className="space-y-0.5">

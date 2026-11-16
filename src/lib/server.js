@@ -11,6 +11,7 @@ import { ModelStore, toSafeModel, resolveTextConfig, validateBaseUrl } from './m
 
 import { TEXT_MODEL_PRESETS } from './model-presets.js';
 import { listDirectories, inspectProject, normalizeCaptureProjects, prepareHookPlans, applyHookPlans } from './local-projects.js';
+import { reconcileAgentPolicy, isAgentAllowed } from './capture-agents.js';
 
 const MODEL_TEST_SAMPLE = '我想把这个问题解释得更清楚。';
 const PUBLIC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
@@ -335,7 +336,14 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
           }
         }
         const nextProjects = body.captureProjects !== undefined ? normalizeCaptureProjects(body.captureProjects) : null;
-        const hookPlans = nextProjects ? prepareHookPlans(nextProjects, { dataDir: config.dataDir, port: actualPort }) : [];
+        const nextAgentPolicy = nextProjects !== null ? reconcileAgentPolicy(
+          db.getSetting('captureAgentPolicy', []), db.getSetting('captureProjects', []), nextProjects,
+        ) : null;
+        const hookPlans = nextProjects ? prepareHookPlans(nextProjects, {
+          dataDir: config.dataDir, port: actualPort,
+          previousProjects: db.getSetting('captureProjects', []),
+          ownership: db.getSetting('captureHookOwnership', {}),
+        }) : [];
         db.db.exec('BEGIN');
         let modelSaved = false;
         let rollbackHooks = () => {};
@@ -347,7 +355,11 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
           }
           if (body.learningMode !== undefined) db.setSetting('learningMode', body.learningMode);
           if (nextPolicy) db.setSetting('capturePolicy', nextPolicy);
-          if (nextProjects) db.setSetting('captureProjects', nextProjects);
+          if (nextProjects) {
+            db.setSetting('captureProjects', nextProjects);
+            db.setSetting('captureHookOwnership', hookPlans.ownership);
+            db.setSetting('captureAgentPolicy', nextAgentPolicy);
+          }
           if (typeof body.paused === 'boolean') db.setPaused(body.paused);
           db.db.exec('COMMIT');
         } catch (error) {
@@ -358,6 +370,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
           }
           throw error;
         }
+        rollbackHooks.finalize?.();
         broadcast();
         schedule();
         return json(res, 200, {
@@ -450,6 +463,7 @@ export function createSidecar(config, { analyzer, storage, modelStore, requestFe
         if (db.getPaused()) return json(res, 202, { ignored: true, reason: 'paused' });
         const body = await readJson(req);
         if (!isProjectAllowed(body?.projectPath, capturePolicy())) return json(res, 202, { ignored: true, reason: 'project-policy' });
+        if (!isAgentAllowed(body?.projectPath, body?.source, db.getSetting('captureAgentPolicy', db.getSetting('captureProjects', [])))) return json(res, 202, { ignored: true, reason: 'agent-policy' });
         const event = normalizeIncomingEvent(body);
         if (event.ignoredReason) return json(res, 202, { ignored: true, reason: event.ignoredReason });
         const result = db.addEvent(event);
